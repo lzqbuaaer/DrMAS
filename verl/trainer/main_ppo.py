@@ -56,7 +56,12 @@ class TaskRunner:
         pprint(OmegaConf.to_container(config, resolve=True))  # resolve=True will eval symbol values
         OmegaConf.resolve(config)
 
-        from agent_system.environments import make_envs
+        system_type = config.agent.get("system_type", "cooperative")
+        if system_type == "competitive":
+            from competitive_agent_system.environments import make_envs
+        else:
+            from agent_system.environments import make_envs
+
         envs, val_envs = make_envs(config)
 
         # instantiate tokenizer
@@ -159,9 +164,14 @@ class TaskRunner:
 
         assert config.actor_rollout_ref.rollout.n == 1, "In verl, actor_rollout_ref.rollout.n>1 is for GRPO. In verl+env, we keep n=1, and achieve GRPO by env.rollout.n"
 
-        from agent_system.multi_turn_rollout import MultiAgentTrajectoryCollector
+        if system_type == "competitive":
+            from competitive_agent_system.rollout import CompetitiveTrajectoryCollector
 
-        traj_collector = MultiAgentTrajectoryCollector(config=config, wg_to_agents_mapping=wg_to_agents_mapping, tokenizers=tokenizers, processors=processors)
+            traj_collector = CompetitiveTrajectoryCollector(config=config, wg_to_agents_mapping=wg_to_agents_mapping, tokenizers=tokenizers, processors=processors)
+        else:
+            from agent_system.multi_turn_rollout import MultiAgentTrajectoryCollector
+
+            traj_collector = MultiAgentTrajectoryCollector(config=config, wg_to_agents_mapping=wg_to_agents_mapping, tokenizers=tokenizers, processors=processors)
 
         from verl.utils.dataset.rl_dataset import collate_fn
 
