@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
+import os
 import uuid
+from datetime import datetime
 
 import numpy as np
 
@@ -15,6 +18,7 @@ class CompetitiveTrajectoryCollector:
         self.config = config
         self.tokenizers = tokenizers
         self.processors = processors
+        self.eval_dump_dir = None
 
         agents_to_wg_mapping = {}
         for wg_id, agents in wg_to_agents_mapping.items():
@@ -27,6 +31,40 @@ class CompetitiveTrajectoryCollector:
             processors=processors,
             agents_to_wg_mapping=agents_to_wg_mapping,
         )
+
+    def _sanitize_path_component(self, value: str) -> str:
+        sanitized = "".join(char if char.isalnum() or char in ("-", "_", ".") else "_" for char in value)
+        return sanitized or "unknown"
+
+    def _get_eval_dump_dir(self) -> str:
+        if self.eval_dump_dir is None:
+            task_name = self._sanitize_path_component(str(self.config.trainer.experiment_name))
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            self.eval_dump_dir = os.path.join("eval_data", task_name, timestamp)
+            os.makedirs(self.eval_dump_dir, exist_ok=True)
+        return self.eval_dump_dir
+
+    def _dump_eval_step_traces(self, step_traces, uid_batch, traj_uid, reset_infos) -> None:
+        dump_dir = self._get_eval_dump_dir()
+        for idx, trace in enumerate(step_traces):
+            if not trace:
+                continue
+
+            reset_info = reset_infos[idx] if idx < len(reset_infos) else {}
+            first_step = trace[0]
+            payload = {
+                "uid": str(uid_batch[idx]),
+                "traj_uid": str(traj_uid[idx]),
+                "data_source": first_step["data_source"],
+                "p_monopoly": first_step["p_monopoly"],
+                "p_nash": first_step["p_nash"],
+                "steps": trace,
+                "reset_info": reset_info,
+            }
+
+            filename = os.path.join(dump_dir, f"{traj_uid[idx]}.json")
+            with open(filename, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2)
 
     def gather_rollout_data(self, total_batch_list, episode_rewards, episode_lengths, success, traj_uid, tool_callings) -> DataProto:
         effective_batch = []
@@ -41,9 +79,9 @@ class CompetitiveTrajectoryCollector:
 
         return DataProto.from_single_dict(data=collate_fn(effective_batch))
 
-    def vanilla_multi_turn_loop(self, gen_batch: DataProto, actor_rollout_wg, envs, effective_rollout_n: int):
+    def vanilla_multi_turn_loop(self, gen_batch: DataProto, actor_rollout_wg, envs, effective_rollout_n: int, dump_eval_traces: bool = False):
         batch_size = len(gen_batch.batch)
-        obs, infos = envs.reset(kwargs=gen_batch.non_tensor_batch.pop("env_kwargs", None))
+        obs, reset_infos = envs.reset(kwargs=gen_batch.non_tensor_batch.pop("env_kwargs", None))
         self.orchestra.reset()
 
         uid_batch = []
@@ -60,6 +98,7 @@ class CompetitiveTrajectoryCollector:
         episode_lengths = np.zeros(batch_size, dtype=np.float32)
         episode_rewards = np.zeros(batch_size, dtype=np.float32)
         tool_callings = np.zeros(batch_size, dtype=np.float32)
+        step_traces = [[] for _ in range(batch_size)]
 
         for step_idx in range(self.config.env.max_steps):
             active_masks = np.logical_not(is_done)
@@ -80,6 +119,19 @@ class CompetitiveTrajectoryCollector:
             tool_callings[active_masks] += np.array([info.get("tool_calling", 0.0) for info in infos], dtype=np.float32)[active_masks]
             episode_rewards[active_masks] += torch_to_numpy(rewards)[active_masks]
             episode_lengths[active_masks] += 1
+
+            for i in range(batch_size):
+                if not active_masks[i]:
+                    continue
+                step_traces[i].append(
+                    {
+                        "step": step_idx + 1,
+                        "data_source": infos[i].get("data_source"),
+                        "prices_by_agent": infos[i].get("prices_by_agent", {}),
+                        "p_monopoly": infos[i].get("p_monopoly"),
+                        "p_nash": infos[i].get("p_nash"),
+                    }
+                )
 
             for data in multiagent_batch_buffer:
                 agent_id, agent_batch = data["agent_id"], data["batch"]
@@ -105,6 +157,8 @@ class CompetitiveTrajectoryCollector:
             episode_rewards=episode_rewards,
             episode_lengths=episode_lengths,
         )
+        if dump_eval_traces:
+            self._dump_eval_step_traces(step_traces=step_traces, uid_batch=uid_batch, traj_uid=traj_uid, reset_infos=reset_infos)
         return total_batch_list, episode_rewards, episode_lengths, success, traj_uid, tool_callings
 
     def multi_turn_loop(self, gen_batch: DataProto, actor_rollout_wg, envs, is_train: bool = True) -> DataProto:
@@ -124,6 +178,7 @@ class CompetitiveTrajectoryCollector:
             actor_rollout_wg=actor_rollout_wg,
             envs=envs,
             effective_rollout_n=effective_rollout_n,
+            dump_eval_traces=not is_train,
         )
 
         return self.gather_rollout_data(

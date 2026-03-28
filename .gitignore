@@ -126,10 +126,10 @@ log
 # nohup
 *.out
 outputs
+eval_data/
 
 # appworld
 data/
 .tmp
 *ports
 model/
-
