@@ -66,6 +66,10 @@ class CompetitiveTrajectoryCollector:
             with open(filename, "w", encoding="utf-8") as f:
                 json.dump(payload, f, ensure_ascii=False, indent=2)
 
+    def _log_eval_step_progress(self, step_idx: int, infos: list[dict], dones: np.ndarray) -> None:
+        batch_prices = [info.get("prices_by_agent", {}) for info in infos]
+        print(f"[duopoly eval] step={step_idx} batch_prices={batch_prices}")
+
     def gather_rollout_data(self, total_batch_list, episode_rewards, episode_lengths, success, traj_uid, tool_callings) -> DataProto:
         effective_batch = []
         for bs in range(len(total_batch_list)):
@@ -152,6 +156,9 @@ class CompetitiveTrajectoryCollector:
                     if agent_batch_list[i]["agent_active_mask"]:
                         total_batch_list[i].append(agent_batch_list[i])
                         total_infos[i].append(infos[i])
+
+            if dump_eval_traces:
+                self._log_eval_step_progress(step_idx=step_idx + 1, infos=infos, dones=dones)
 
             is_done = np.logical_or(is_done, dones)
             obs = next_obs
