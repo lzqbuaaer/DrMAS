@@ -41,7 +41,8 @@ class CompetitiveTurnOrchestra:
         attempts = np.zeros(len(obs_texts), dtype=np.int32)
         remaining = active_masks.copy()
         saved_rows = None
-        saved_actions = [self.parser.parse("") for _ in range(len(obs_texts))]
+        max_prices = [self.parser.extract_ceiling_from_observation(obs_text) for obs_text in obs_texts]
+        saved_actions = [self.parser.parse("", max_price=max_prices[idx]) for idx in range(len(obs_texts))]
 
         while remaining.any() and np.any(attempts[remaining] < self.parser.max_retries):
             batch, text_responses = self.agents[agent_id].call(
@@ -61,7 +62,7 @@ class CompetitiveTurnOrchestra:
                     continue
 
                 attempts[idx] += 1
-                parsed = self.parser.parse(text_responses[idx])
+                parsed = self.parser.parse(text_responses[idx], max_price=max_prices[idx])
                 parsed.retry_count = int(attempts[idx])
 
                 row_list[idx]["is_action_valid"] = parsed.valid

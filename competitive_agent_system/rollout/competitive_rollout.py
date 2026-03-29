@@ -136,6 +136,7 @@ class CompetitiveTrajectoryCollector:
                         "step": step_idx + 1,
                         "data_source": infos[i].get("data_source"),
                         "prices_by_agent": infos[i].get("prices_by_agent", {}),
+                        "profits_by_agent": infos[i].get("profits_by_agent", {}),
                         "p_monopoly": infos[i].get("p_monopoly"),
                         "p_nash": infos[i].get("p_nash"),
                         "failure_reason": infos[i].get("failure_reason"),
