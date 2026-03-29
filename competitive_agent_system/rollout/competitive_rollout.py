@@ -123,6 +123,9 @@ class CompetitiveTrajectoryCollector:
             for i in range(batch_size):
                 if not active_masks[i]:
                     continue
+                raw_text_by_agent = {
+                    agent_id: actions_by_agent[agent_id][i].raw_text for agent_id in self.config.agent.agent_ids
+                }
                 step_traces[i].append(
                     {
                         "step": step_idx + 1,
@@ -130,6 +133,10 @@ class CompetitiveTrajectoryCollector:
                         "prices_by_agent": infos[i].get("prices_by_agent", {}),
                         "p_monopoly": infos[i].get("p_monopoly"),
                         "p_nash": infos[i].get("p_nash"),
+                        "failure_reason": infos[i].get("failure_reason"),
+                        "invalid_by_agent": infos[i].get("invalid_by_agent", {}),
+                        "retry_count_by_agent": infos[i].get("retry_count_by_agent", {}),
+                        "raw_text_by_agent": raw_text_by_agent,
                     }
                 )
 
