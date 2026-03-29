@@ -31,10 +31,18 @@ class DuopolyArenaEnv:
         self._finished = False
         self._terminal_info = {
             "data_source": self.game.data_source,
+            "p_monopoly": self.game.p_monopoly,
+            "p_nash": self.game.p_nash,
+            "ceiling": self.game.ceiling,
             "won": False,
             "tool_calling": 0.0,
         }
-        return self._build_observations(), {"data_source": self.game.data_source}
+        return self._build_observations(), {
+            "data_source": self.game.data_source,
+            "p_monopoly": self.game.p_monopoly,
+            "p_nash": self.game.p_nash,
+            "ceiling": self.game.ceiling,
+        }
 
     def step(self, actions_by_agent: dict[str, Any]):
         if self._finished:
@@ -94,6 +102,17 @@ class DuopolyMultiProcessEnv:
         obs_list, info_list = map(list, zip(*results))
         obs_list = [o for o, keep in zip(obs_list, valid_mask) if keep]
         info_list = [i for i, keep in zip(info_list, valid_mask) if keep]
+        if not self.is_train:
+            batch_stats = [
+                {
+                    "data_source": info.get("data_source"),
+                    "p_monopoly": info.get("p_monopoly"),
+                    "p_nash": info.get("p_nash"),
+                    "ceiling": info.get("ceiling"),
+                }
+                for info in info_list
+            ]
+            print(f"[duopoly eval] batch_init={batch_stats}")
         return obs_list, info_list
 
     def step(self, actions: list[dict[str, Any]]):
