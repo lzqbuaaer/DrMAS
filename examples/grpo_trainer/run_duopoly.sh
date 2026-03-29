@@ -7,7 +7,7 @@ if [ "$MODE" == "eval" ] || [ "$MODE" == "evaluation" ]; then
     TRAIN_DATA="$HOME/data/drmas_duopoly/train.parquet"
     VAL_DATA="$HOME/data/drmas_duopoly/test.parquet"
     train_data_size=8
-    val_data_size=8
+    val_data_size=1
     val_group_size=1
 else
     echo "Running in training mode"
@@ -23,8 +23,8 @@ algorithm=grpo
 group_size=1
 
 agent_ids='["Firm 1 Agent","Firm 2 Agent"]'
-model_ids='["Qwen/Qwen2.5-7B","Qwen/Qwen2.5-7B"]'
-model_sharing=False
+model_ids='["/devsft_AFS/liuzhiqian/DrMAS/model/Qwen2.5-3B","/devsft_AFS/liuzhiqian/DrMAS/model/Qwen2.5-3B"]'
+model_sharing=True
 
 orchestra_type=duopoly
 actor_optim_lr='[1e-6,1e-6]'
@@ -39,8 +39,8 @@ python3 -m verl.trainer.main_ppo \
     data.val_files=$VAL_DATA \
     data.train_batch_size=$train_data_size \
     data.val_batch_size=$val_data_size \
-    data.max_prompt_length=8192 \
-    data.max_response_length=2048 \
+    data.max_prompt_length=4096 \
+    data.max_response_length=1024 \
     data.filter_overlong_prompts=False \
     data.truncation='left' \
     data.return_raw_chat=True \
@@ -56,10 +56,10 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
-    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=4 \
+    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=1 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.name=sglang \
-    actor_rollout_ref.rollout.gpu_memory_utilization=0.4 \
+    actor_rollout_ref.rollout.gpu_memory_utilization=0.3 \
     actor_rollout_ref.rollout.enable_chunked_prefill=False \
     actor_rollout_ref.rollout.enforce_eager=False \
     actor_rollout_ref.rollout.free_cache_engine=False \
@@ -74,7 +74,7 @@ python3 -m verl.trainer.main_ppo \
     env.rollout.n=$group_size \
     env.rollout.val_n=$val_group_size \
     env.duopoly.prompt_prefix_type=P1 \
-    env.duopoly.history_window=100 \
+    env.duopoly.history_window=30 \
     env.duopoly.max_parse_retry=10 \
     agent.multi_agent=True \
     agent.system_type=competitive \
@@ -86,7 +86,7 @@ python3 -m verl.trainer.main_ppo \
     trainer.logger=['console','wandb'] \
     trainer.project_name='DrMAS_duopoly' \
     trainer.experiment_name="$experiment_name" \
-    trainer.n_gpus_per_node=4 \
+    trainer.n_gpus_per_node=8 \
     trainer.nnodes=1 \
     trainer.save_freq=100 \
     trainer.test_freq=5 \
