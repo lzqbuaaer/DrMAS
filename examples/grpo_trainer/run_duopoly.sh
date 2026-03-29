@@ -1,19 +1,37 @@
 set -x
 
 MODE=${1:-eval}
+
+DATA_LOCAL_DIR="$HOME/data/drmas_duopoly"
+ALPHAS=("1.0" "3.2" "10.0")
+PROMPT_PREFIX_TYPES=("P1" "P2")
+SEED_START=0
+TRAIN_SEED_COUNT=64
+TEST_SEED_COUNT=16
+TEST_SAMPLED_SEED_COUNT=4
+
+python3 examples/data_preprocess/drmas_duopoly.py \
+    --local_dir "$DATA_LOCAL_DIR" \
+    --alphas "${ALPHAS[@]}" \
+    --prompt_prefix_types "${PROMPT_PREFIX_TYPES[@]}" \
+    --seed_start $SEED_START \
+    --train_seed_count $TRAIN_SEED_COUNT \
+    --test_seed_count $TEST_SEED_COUNT \
+    --test_sampled_seed_count $TEST_SAMPLED_SEED_COUNT
+
 if [ "$MODE" == "eval" ] || [ "$MODE" == "evaluation" ]; then
     echo "Running in evaluation mode"
     VAL_ONLY=True
-    TRAIN_DATA="$HOME/data/drmas_duopoly/train.parquet"
-    VAL_DATA="$HOME/data/drmas_duopoly/test.parquet"
+    TRAIN_DATA="$DATA_LOCAL_DIR/train.parquet"
+    VAL_DATA="$DATA_LOCAL_DIR/test.parquet"
     train_data_size=8
     val_data_size=1
     val_group_size=1
 else
     echo "Running in training mode"
     VAL_ONLY=False
-    TRAIN_DATA="$HOME/data/drmas_duopoly/train.parquet"
-    VAL_DATA="$HOME/data/drmas_duopoly/test_sampled.parquet"
+    TRAIN_DATA="$DATA_LOCAL_DIR/train.parquet"
+    VAL_DATA="$DATA_LOCAL_DIR/test_sampled.parquet"
     train_data_size=8
     val_data_size=8
     val_group_size=1
