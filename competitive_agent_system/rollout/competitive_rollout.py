@@ -58,6 +58,7 @@ class CompetitiveTrajectoryCollector:
                 "data_source": first_step["data_source"],
                 "p_monopoly": first_step["p_monopoly"],
                 "p_nash": first_step["p_nash"],
+                "ceiling": reset_info.get("ceiling"),
                 "steps": trace,
                 "reset_info": reset_info,
             }
