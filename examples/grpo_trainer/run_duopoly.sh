@@ -3,11 +3,13 @@ set -x
 MODE=${1:-eval}
 
 DATA_LOCAL_DIR="$HOME/data/drmas_duopoly"
-ALPHAS=("1.0" "3.2" "10.0")
-PROMPT_PREFIX_TYPES=("P1" "P2")
+# ALPHAS=("1.0" "3.2" "10.0")
+# PROMPT_PREFIX_TYPES=("P1" "P2")
+ALPHAS=("1.0")
+PROMPT_PREFIX_TYPES=("P2")
 SEED_START=0
 TRAIN_SEED_COUNT=64
-TEST_SEED_COUNT=16
+TEST_SEED_COUNT=1
 TEST_SAMPLED_SEED_COUNT=4
 
 python3 examples/data_preprocess/drmas_duopoly.py \
@@ -57,8 +59,8 @@ python3 -m verl.trainer.main_ppo \
     data.val_files=$VAL_DATA \
     data.train_batch_size=$train_data_size \
     data.val_batch_size=$val_data_size \
-    data.max_prompt_length=4096 \
-    data.max_response_length=1024 \
+    data.max_prompt_length=8192 \
+    data.max_response_length=4096 \
     data.filter_overlong_prompts=False \
     data.truncation='left' \
     data.return_raw_chat=True \
@@ -88,12 +90,12 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.invalid_action_penalty_coef=0.01 \
     env.env_name=duopoly \
     env.seed=0 \
-    env.max_steps=300 \
+    env.max_steps=100 \
     env.rollout.n=$group_size \
     env.rollout.val_n=$val_group_size \
     env.duopoly.prompt_prefix_type=P1 \
-    env.duopoly.history_window=30 \
-    env.duopoly.max_parse_retry=10 \
+    env.duopoly.history_window=20 \
+    env.duopoly.max_parse_retry=100 \
     agent.multi_agent=True \
     agent.system_type=competitive \
     agent.agent_ids="$agent_ids" \
