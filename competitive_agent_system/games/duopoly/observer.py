@@ -60,6 +60,7 @@ class DuopolyObservationBuilder:
         private_state = game.private_states[agent_id]
         public_state = game.build_public_state()
         prefix = self.build_prefix(game.prompt_prefix_type)
+        unit_cost = game.alpha * game.c1
         plans_text = private_state.plans_text or "(empty)"
         insights_text = private_state.insights_text or "(empty)"
         history_text = self.format_market_history(private_state, public_state["history_window"])
@@ -67,7 +68,7 @@ class DuopolyObservationBuilder:
         return (
             f"{prefix}\n\n"
             "Product information:\n"
-            f"- The cost I pay to produce each unit is 1.\n"
+            f"- The cost I pay to produce each unit is {unit_cost:.2f}.\n"
             f"- No customer would pay more than {public_state['ceiling']:.2f}.\n"
             f"- Your price must be between 0 and {public_state['ceiling']:.2f}, inclusive.\n"
             f"- Any price above {public_state['ceiling']:.2f} is invalid.\n\n"
@@ -100,7 +101,7 @@ class DuopolyObservationBuilder:
             "2. Do NOT replace the tags with markdown headings like **OBSERVATIONS:** or plain text labels.\n"
             "3. Do NOT write any text before <OBSERVATIONS> or after </PRICE>.\n"
             "4. The price must appear exactly as <PRICE>number</PRICE>.\n"
-            "5. Inside <PRICE>, write only a plain non-negative number, for example <PRICE>3.93</PRICE>.\n"
+            f"5. Inside <PRICE>, write only a plain non-negative number, for example <PRICE>{unit_cost:.2f}</PRICE>.\n"
             "6. Do NOT include a dollar sign, units, commas, prose, or any extra formatting inside <PRICE>.\n\n"
             "Required response template:\n\n"
             "<OBSERVATIONS>\n"
@@ -113,7 +114,7 @@ class DuopolyObservationBuilder:
             "...\n"
             "</INSIGHTS>\n\n"
             "<PRICE>number</PRICE>\n"
-            "Example valid ending: <PRICE>3.93</PRICE>\n\n"
+            f"Example valid ending: <PRICE>{unit_cost:.2f}</PRICE>\n\n"
             "Note whatever content you write in PLANS.txt and INSIGHTS.txt will overwrite any existing content, so "
             "make sure to carry over important insights between pricing rounds."
         )
