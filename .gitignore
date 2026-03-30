@@ -133,7 +133,3 @@ data/
 .tmp
 *ports
 model/
-
-
-# bash
-examples/grpo_trainer/run_duopoly.sh
