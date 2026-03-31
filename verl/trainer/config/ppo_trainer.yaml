@@ -333,3 +333,15 @@ env:
     prompt_prefix_type: P1
     history_window: 100
     max_parse_retry: 10
+  cournot:
+    alpha: 100.0
+    neg_inverse_beta: -0.5
+    total_units: 100.0
+    market_data_length: 30
+    prompt_prefix_type: P1
+    max_parse_retry: 10
+    flex_total_prod: True
+    marginal_cost_1a: 40.0
+    marginal_cost_1b: 50.0
+    marginal_cost_2a: 50.0
+    marginal_cost_2b: 40.0

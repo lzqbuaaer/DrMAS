@@ -150,7 +150,7 @@ class DuopolyGameSpec:
             "rewards_by_agent": rewards_by_agent,
             "profits_by_agent": rewards_by_agent,
             "quantities_by_agent": {agent_id: 0.0 for agent_id in self.agent_ids},
-            "prices_by_agent": {agent_id: actions[agent_id].price for agent_id in self.agent_ids},
+            "prices_by_agent": {agent_id: actions[agent_id].payload.get("price") for agent_id in self.agent_ids},
             "p_monopoly": self.p_monopoly,
             "p_nash": self.p_nash,
             "invalid_by_agent": {agent_id: not actions[agent_id].valid for agent_id in self.agent_ids},
@@ -165,8 +165,8 @@ class DuopolyGameSpec:
             return self._mark_failure(actions, f"invalid outputs from {invalid_agents}")
 
         agent_1, agent_2 = self.agent_ids
-        p1 = float(actions[agent_1].price)
-        p2 = float(actions[agent_2].price)
+        p1 = float(actions[agent_1].payload["price"])
+        p2 = float(actions[agent_2].payload["price"])
 
         q1, q2 = self.compute_demands(p1, p2)
         pi1, pi2 = self.compute_profits(p1, p2, q1, q2)

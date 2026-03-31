@@ -50,7 +50,8 @@ class DuopolyActionParser:
             error = "missing required tags or invalid price"
         return CompetitiveAction(
             raw_text=text,
-            price=price,
+            action_type="price",
+            payload={} if price is None else {"price": price},
             plans_text=plans_text or "",
             insights_text=insights_text or "",
             valid=valid,

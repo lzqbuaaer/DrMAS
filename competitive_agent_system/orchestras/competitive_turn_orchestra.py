@@ -31,7 +31,25 @@ class CompetitiveTurnOrchestra:
             )
             for name in self.agent_ids
         }
-        self.parser = DuopolyActionParser(max_retries=int(config.env.duopoly.max_parse_retry))
+        self.parser = self._build_parser()
+
+    def _build_parser(self):
+        env_name = str(self.config.env.env_name).lower()
+        if "duopoly" in env_name:
+            return DuopolyActionParser(max_retries=int(self.config.env.duopoly.max_parse_retry))
+        if "cournot" in env_name:
+            from competitive_agent_system.games.cournot.parser import CournotActionParser
+
+            return CournotActionParser(max_retries=int(self.config.env.cournot.max_parse_retry))
+        raise ValueError(f"Unsupported competitive environment '{self.config.env.env_name}'")
+
+    def _build_parse_kwargs(self, obs_texts: list[str]) -> list[dict]:
+        env_name = str(self.config.env.env_name).lower()
+        if "duopoly" in env_name:
+            return [{"max_price": self.parser.extract_ceiling_from_observation(obs_text)} for obs_text in obs_texts]
+        if "cournot" in env_name:
+            return [{"total_units": self.parser.extract_total_units_from_observation(obs_text)} for obs_text in obs_texts]
+        return [{} for _ in obs_texts]
 
     def reset(self):
         for agent in self.agents.values():
@@ -41,8 +59,8 @@ class CompetitiveTurnOrchestra:
         attempts = np.zeros(len(obs_texts), dtype=np.int32)
         remaining = active_masks.copy()
         saved_rows = None
-        max_prices = [self.parser.extract_ceiling_from_observation(obs_text) for obs_text in obs_texts]
-        saved_actions = [self.parser.parse("", max_price=max_prices[idx]) for idx in range(len(obs_texts))]
+        parse_kwargs = self._build_parse_kwargs(obs_texts)
+        saved_actions = [self.parser.parse("", **parse_kwargs[idx]) for idx in range(len(obs_texts))]
 
         while remaining.any() and np.any(attempts[remaining] < self.parser.max_retries):
             batch, text_responses = self.agents[agent_id].call(
@@ -62,7 +80,7 @@ class CompetitiveTurnOrchestra:
                     continue
 
                 attempts[idx] += 1
-                parsed = self.parser.parse(text_responses[idx], max_price=max_prices[idx])
+                parsed = self.parser.parse(text_responses[idx], **parse_kwargs[idx])
                 parsed.retry_count = int(attempts[idx])
 
                 row_list[idx]["is_action_valid"] = parsed.valid

@@ -56,12 +56,14 @@ class CompetitiveTrajectoryCollector:
                 "uid": str(uid_batch[idx]),
                 "traj_uid": str(traj_uid[idx]),
                 "data_source": first_step["data_source"],
-                "p_monopoly": first_step["p_monopoly"],
-                "p_nash": first_step["p_nash"],
-                "ceiling": reset_info.get("ceiling"),
                 "steps": trace,
                 "reset_info": reset_info,
             }
+            for key in ("p_monopoly", "p_nash", "ceiling", "monopoly_quantities", "nash_quantities", "total_units"):
+                if key in reset_info:
+                    payload[key] = reset_info.get(key)
+                elif key in first_step:
+                    payload[key] = first_step.get(key)
 
             filename = os.path.join(dump_dir, f"{traj_uid[idx]}.json")
             with open(filename, "w", encoding="utf-8") as f:
@@ -69,7 +71,12 @@ class CompetitiveTrajectoryCollector:
 
     def _log_eval_step_progress(self, step_idx: int, infos: list[dict], dones: np.ndarray) -> None:
         batch_prices = [info.get("prices_by_agent", {}) for info in infos]
-        print(f"[duopoly eval] step={step_idx} batch_prices={batch_prices}")
+        if any(prices for prices in batch_prices):
+            print(f"[competitive eval] step={step_idx} batch_prices={batch_prices}")
+            return
+
+        batch_quantities = [info.get("quantities_by_agent", {}) for info in infos]
+        print(f"[competitive eval] step={step_idx} batch_quantities={batch_quantities}")
 
     def gather_rollout_data(self, total_batch_list, episode_rewards, episode_lengths, success, traj_uid, tool_callings) -> DataProto:
         effective_batch = []
@@ -136,9 +143,13 @@ class CompetitiveTrajectoryCollector:
                         "step": step_idx + 1,
                         "data_source": infos[i].get("data_source"),
                         "prices_by_agent": infos[i].get("prices_by_agent", {}),
+                        "quantities_by_agent": infos[i].get("quantities_by_agent", {}),
+                        "market_prices": infos[i].get("market_prices", {}),
                         "profits_by_agent": infos[i].get("profits_by_agent", {}),
                         "p_monopoly": infos[i].get("p_monopoly"),
                         "p_nash": infos[i].get("p_nash"),
+                        "monopoly_quantities": infos[i].get("monopoly_quantities"),
+                        "nash_quantities": infos[i].get("nash_quantities"),
                         "failure_reason": infos[i].get("failure_reason"),
                         "invalid_by_agent": infos[i].get("invalid_by_agent", {}),
                         "retry_count_by_agent": infos[i].get("retry_count_by_agent", {}),

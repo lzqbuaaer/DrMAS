@@ -15,10 +15,11 @@ class AgentPrivateState:
 @dataclass
 class CompetitiveAction:
     raw_text: str
-    price: float | None
-    plans_text: str
-    insights_text: str
-    valid: bool
+    action_type: str
+    payload: dict[str, Any] = field(default_factory=dict)
+    plans_text: str = ""
+    insights_text: str = ""
+    valid: bool = False
     error: str | None = None
     retry_count: int = 0
 
