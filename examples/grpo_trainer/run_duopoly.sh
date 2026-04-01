@@ -6,6 +6,7 @@ DATA_LOCAL_DIR="$HOME/data/drmas_duopoly"
 # ALPHAS=("1.0" "3.2" "10.0")
 # PROMPT_PREFIX_TYPES=("P1" "P2")
 ALPHAS=("1.0")
+BETA="100.0"
 PROMPT_PREFIX_TYPES=("P2")
 SEED_START=0
 TRAIN_SEED_COUNT=64
@@ -93,6 +94,7 @@ python3 -m verl.trainer.main_ppo \
     env.max_steps=100 \
     env.rollout.n=$group_size \
     env.rollout.val_n=$val_group_size \
+    env.duopoly.beta=$BETA \
     env.duopoly.prompt_prefix_type=P1 \
     env.duopoly.history_window=20 \
     env.duopoly.max_parse_retry=100 \

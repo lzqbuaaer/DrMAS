@@ -330,6 +330,7 @@ env:
     timeout: 60
   duopoly:
     alpha: 1.0
+    beta: 100.0
     prompt_prefix_type: P1
     history_window: 100
     max_parse_retry: 10

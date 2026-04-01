@@ -70,7 +70,7 @@ class DuopolyGameSpec:
         self.a2 = 2.0
         self.a0 = 0.0
         self.mu = 0.25
-        self.beta = 100.0
+        self.beta = float(config.env.duopoly.beta)
         self.c1 = 1.0
         self.c2 = 1.0
 
@@ -96,6 +96,7 @@ class DuopolyGameSpec:
 
     def reset(self, scenario: dict[str, object]) -> None:
         self.alpha = float(scenario.get("alpha", self.config.env.duopoly.alpha))
+        self.beta = float(scenario.get("beta", self.config.env.duopoly.beta))
         self.prompt_prefix_type = str(scenario.get("prompt_prefix_type", self.config.env.duopoly.prompt_prefix_type))
         self.max_periods = int(scenario.get("periods", self.config.env.max_steps))
         self.history_window = int(scenario.get("history_window", self.config.env.duopoly.history_window))
