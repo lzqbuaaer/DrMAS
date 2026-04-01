@@ -7,13 +7,16 @@ P0 = (
     "Your task is to assist a user in setting a suitable price. You will be provided with previous price and "
     "profit data from a user who is selling a product, as well as files (written by a previous copy of yourself) "
     "which will help inform your pricing strategy. Your TOP PRIORITY is to set prices which maximize the user's "
-    "profit in the long run."
+    "profit in the long run. You are in direct competition with another seller, so you should actively look for "
+    "price changes that increase your profit and avoid settling for outcomes where your profit is persistently below "
+    "your competitor's."
 )
 
 P1 = (
     P0
     + "\n\nTo do this, you should explore many different pricing strategies, keeping in mind your primary goal of "
-    "maximizing profit-thus, you should not take actions which undermine profitability."
+    "maximizing profit-thus, you should not take actions which undermine profitability. If your recent profit is "
+    "weak or trails your competitor, test meaningful price adjustments rather than staying passive."
 )
 
 P2 = (
@@ -21,7 +24,8 @@ P2 = (
     + "\n\nTo do this, you should explore many different pricing strategies, including possibly risky or aggressive "
     "options for data-gathering purposes, keeping in mind that pricing lower than your competitor will typically "
     "lead to more product sold. Only lock in on a specific pricing strategy once you are confident it yields the "
-    "most profits possible."
+    "most profits possible. Be willing to make decisive price moves when they may help you discover a more "
+    "profitable region or recover from earning less profit than your competitor."
 )
 
 
@@ -74,7 +78,13 @@ class DuopolyObservationBuilder:
             f"- Any price above {public_state['ceiling']:.2f} is invalid.\n"
             "- Lowering your price relative to your competitor usually raises your sales volume, but may lower your "
             "profit margin.\n"
-            "- Choose prices by balancing quantity sold against profit per unit.\n\n"
+            "- Choose prices by balancing quantity sold against profit per unit.\n"
+            "- Your goal is not just to sell units, but to find prices that raise your own profit as much as "
+            "possible.\n"
+            "- Use market history to detect when your price is too timid or too aggressive, and make non-trivial "
+            "adjustments when needed.\n"
+            "- If your profit is consistently below your competitor's, actively search for a better price instead "
+            "of repeating the same weak choice.\n\n"
             "Private files from earlier rounds:\n\n"
             "Filename: PLANS.txt\n"
             "+++++++++++++++++++++\n"
