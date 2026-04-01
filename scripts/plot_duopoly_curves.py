@@ -57,8 +57,8 @@ def plot_price_curve(data, save_path):
     agent2 = data["agent2"]
 
     plt.figure(figsize=(12, 6))
-    plt.plot(rounds, data["prices_1"], marker="o", linewidth=1.8, markersize=4, label=f"{agent1} price")
-    plt.plot(rounds, data["prices_2"], marker="s", linewidth=1.8, markersize=4, label=f"{agent2} price")
+    plt.plot(rounds, data["prices_1"], marker="o", linestyle="None", markersize=4, label=f"{agent1} price")
+    plt.plot(rounds, data["prices_2"], marker="s", linestyle="None", markersize=4, label=f"{agent2} price")
 
     if data["p_monopoly"] is not None:
         plt.axhline(
@@ -92,8 +92,8 @@ def plot_profit_curve(data, save_path):
     agent2 = data["agent2"]
 
     plt.figure(figsize=(12, 6))
-    plt.plot(rounds, data["profits_1"], marker="o", linewidth=1.8, markersize=4, label=f"{agent1} profit")
-    plt.plot(rounds, data["profits_2"], marker="s", linewidth=1.8, markersize=4, label=f"{agent2} profit")
+    plt.plot(rounds, data["profits_1"], marker="o", linestyle="None", markersize=4, label=f"{agent1} profit")
+    plt.plot(rounds, data["profits_2"], marker="s", linestyle="None", markersize=4, label=f"{agent2} profit")
 
     plt.xlabel("Round")
     plt.ylabel("Profit")
@@ -111,8 +111,8 @@ def plot_retry_curve(data, save_path):
     agent2 = data["agent2"]
 
     plt.figure(figsize=(12, 6))
-    plt.plot(rounds, data["retries_1"], marker="o", linewidth=1.8, markersize=4, label=f"{agent1} retry count")
-    plt.plot(rounds, data["retries_2"], marker="s", linewidth=1.8, markersize=4, label=f"{agent2} retry count")
+    plt.plot(rounds, data["retries_1"], marker="o", linestyle="None", markersize=4, label=f"{agent1} retry count")
+    plt.plot(rounds, data["retries_2"], marker="s", linestyle="None", markersize=4, label=f"{agent2} retry count")
 
     plt.xlabel("Round")
     plt.ylabel("Retry Count")

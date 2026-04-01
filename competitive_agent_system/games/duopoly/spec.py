@@ -91,6 +91,8 @@ class DuopolyGameSpec:
         self.last_step_profit_by_agent: dict[str, float] = {}
         self.last_step_quantity_by_agent: dict[str, float] = {}
         self.last_step_price_by_agent: dict[str, float] = {}
+        self.price_history_by_agent: dict[str, list[float]] = {}
+        self.consumer_surplus_history: list[float] = []
 
     def reset(self, scenario: dict[str, object]) -> None:
         self.alpha = float(scenario.get("alpha", self.config.env.duopoly.alpha))
@@ -108,6 +110,8 @@ class DuopolyGameSpec:
         self.last_step_profit_by_agent = {agent_id: 0.0 for agent_id in self.agent_ids}
         self.last_step_quantity_by_agent = {agent_id: 0.0 for agent_id in self.agent_ids}
         self.last_step_price_by_agent = {agent_id: 0.0 for agent_id in self.agent_ids}
+        self.price_history_by_agent = {agent_id: [] for agent_id in self.agent_ids}
+        self.consumer_surplus_history = []
 
         self.p_monopoly = solve_symmetric_p_monopoly(self.alpha, self.a1, self.a0, self.mu, self.beta, self.c1)
         self.p_nash = solve_symmetric_p_nash(self.alpha, self.a1, self.a0, self.mu, self.beta, self.c1)
@@ -137,6 +141,13 @@ class DuopolyGameSpec:
         pi2 = (p2 - self.alpha * self.c2) * q2
         return pi1, pi2
 
+    def compute_consumer_surplus(self, p1: float, p2: float) -> float:
+        util1 = math.exp((self.a1 - p1 / self.alpha) / self.mu)
+        util2 = math.exp((self.a2 - p2 / self.alpha) / self.mu)
+        outside = math.exp(self.a0 / self.mu)
+        inclusive_value = math.log(util1 + util2 + outside) - math.log(outside)
+        return float(self.beta * self.mu * inclusive_value)
+
     def _mark_failure(self, actions: dict[str, CompetitiveAction], reason: str) -> CompetitiveStepResult:
         self.failed = True
         for agent_id in self.agent_ids:
@@ -159,6 +170,26 @@ class DuopolyGameSpec:
         }
         return CompetitiveStepResult(reward=0.0, rewards_by_agent=rewards_by_agent, done=True, won=False, info=info)
 
+    def _tail_window_size(self) -> int:
+        if self.round_idx <= 0:
+            return 0
+        return max(1, int(math.ceil(self.round_idx * 0.2)))
+
+    def _mean_tail_alignment(self, agent_id: str, target_price: float) -> float:
+        prices = self.price_history_by_agent.get(agent_id, [])
+        if not prices:
+            return 0.0
+        tail_window = self._tail_window_size()
+        tail_prices = prices[-tail_window:]
+        scores = [1.0 / (1.0 + abs(price - target_price) / self.alpha) for price in tail_prices]
+        return float(np.mean(scores))
+
+    def _mean_tail_consumer_surplus(self) -> float:
+        if not self.consumer_surplus_history:
+            return 0.0
+        tail_window = self._tail_window_size()
+        return float(np.mean(self.consumer_surplus_history[-tail_window:]))
+
     def step(self, actions: dict[str, CompetitiveAction]) -> CompetitiveStepResult:
         invalid_agents = [agent_id for agent_id, action in actions.items() if not action.valid]
         if invalid_agents:
@@ -176,6 +207,9 @@ class DuopolyGameSpec:
         self.last_step_price_by_agent = {agent_1: p1, agent_2: p2}
         self.last_step_quantity_by_agent = {agent_1: q1, agent_2: q2}
         self.last_step_profit_by_agent = {agent_1: pi1, agent_2: pi2}
+        self.price_history_by_agent[agent_1].append(p1)
+        self.price_history_by_agent[agent_2].append(p2)
+        self.consumer_surplus_history.append(self.compute_consumer_surplus(p1, p2))
         self.cumulative_profit_by_agent[agent_1] += pi1
         self.cumulative_profit_by_agent[agent_2] += pi2
 
@@ -213,6 +247,10 @@ class DuopolyGameSpec:
 
     def summarize_episode(self) -> CompetitiveEpisodeSummary:
         agent_1, agent_2 = self.agent_ids
+        cooperation_firm1 = self._mean_tail_alignment(agent_1, self.p_nash)
+        cooperation_firm2 = self._mean_tail_alignment(agent_2, self.p_nash)
+        collusion_firm1 = self._mean_tail_alignment(agent_1, self.p_monopoly)
+        collusion_firm2 = self._mean_tail_alignment(agent_2, self.p_monopoly)
         metrics = {
             "cumulative_profit/firm1": self.cumulative_profit_by_agent[agent_1],
             "cumulative_profit/firm2": self.cumulative_profit_by_agent[agent_2],
@@ -221,5 +259,11 @@ class DuopolyGameSpec:
             "last_price/firm2": self.last_step_price_by_agent[agent_2],
             "p_monopoly": self.p_monopoly,
             "p_nash": self.p_nash,
+            "tail20pct_window_size": float(self._tail_window_size()),
+            "cooperation_last20pct/firm1": cooperation_firm1,
+            "cooperation_last20pct/firm2": cooperation_firm2,
+            "collusion_last20pct/firm1": collusion_firm1,
+            "collusion_last20pct/firm2": collusion_firm2,
+            "consumer_surplus_last20pct": self._mean_tail_consumer_surplus(),
         }
         return CompetitiveEpisodeSummary(metrics=metrics, won=not self.failed and self.round_idx == self.max_periods, reason=None if not self.failed else "invalid_output")

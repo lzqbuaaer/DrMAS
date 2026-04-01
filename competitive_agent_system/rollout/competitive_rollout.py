@@ -44,13 +44,26 @@ class CompetitiveTrajectoryCollector:
             os.makedirs(self.eval_dump_dir, exist_ok=True)
         return self.eval_dump_dir
 
-    def _dump_eval_step_traces(self, step_traces, uid_batch, traj_uid, reset_infos) -> None:
+    def _extract_terminal_infos(self, total_batch_list, total_infos) -> list[dict]:
+        terminal_infos = []
+        for batch_idx in range(len(total_batch_list)):
+            terminal_info = {}
+            for item_idx in reversed(range(len(total_batch_list[batch_idx]))):
+                batch_item = total_batch_list[batch_idx][item_idx]
+                if batch_item["active_masks"]:
+                    terminal_info = total_infos[batch_idx][item_idx]
+                    break
+            terminal_infos.append(terminal_info)
+        return terminal_infos
+
+    def _dump_eval_step_traces(self, step_traces, uid_batch, traj_uid, reset_infos, terminal_infos) -> None:
         dump_dir = self._get_eval_dump_dir()
         for idx, trace in enumerate(step_traces):
             if not trace:
                 continue
 
             reset_info = reset_infos[idx] if idx < len(reset_infos) else {}
+            terminal_info = terminal_infos[idx] if idx < len(terminal_infos) else {}
             first_step = trace[0]
             payload = {
                 "uid": str(uid_batch[idx]),
@@ -64,6 +77,33 @@ class CompetitiveTrajectoryCollector:
                     payload[key] = reset_info.get(key)
                 elif key in first_step:
                     payload[key] = first_step.get(key)
+
+            if terminal_info:
+                agent_ids = list(self.config.agent.agent_ids)
+                payload["tail20pct_window_size"] = terminal_info.get("tail20pct_window_size")
+                payload["cooperation_last20pct_by_agent"] = {
+                    agent_ids[0]: terminal_info.get("cooperation_last20pct/firm1"),
+                    agent_ids[1]: terminal_info.get("cooperation_last20pct/firm2"),
+                }
+                payload["collusion_last20pct_by_agent"] = {
+                    agent_ids[0]: terminal_info.get("collusion_last20pct/firm1"),
+                    agent_ids[1]: terminal_info.get("collusion_last20pct/firm2"),
+                }
+                if "consumer_surplus_last20pct" in terminal_info:
+                    payload["consumer_surplus_last20pct"] = terminal_info.get("consumer_surplus_last20pct")
+                if "hhi_last20pct/product_a" in terminal_info or "hhi_last20pct/product_b" in terminal_info:
+                    payload["tail20pct_window_size"] = terminal_info.get("tail20pct_window_size")
+                    payload["hhi_last20pct"] = {
+                        "product_a": terminal_info.get("hhi_last20pct/product_a"),
+                        "product_b": terminal_info.get("hhi_last20pct/product_b"),
+                        "mean": terminal_info.get("hhi_last20pct/mean"),
+                    }
+                if "consumer_surplus_last20pct/product_a" in terminal_info or "consumer_surplus_last20pct/product_b" in terminal_info:
+                    payload["consumer_surplus_last20pct"] = {
+                        "product_a": terminal_info.get("consumer_surplus_last20pct/product_a"),
+                        "product_b": terminal_info.get("consumer_surplus_last20pct/product_b"),
+                        "total": terminal_info.get("consumer_surplus_last20pct/total"),
+                    }
 
             filename = os.path.join(dump_dir, f"{traj_uid[idx]}.json")
             with open(filename, "w", encoding="utf-8") as f:
@@ -185,7 +225,14 @@ class CompetitiveTrajectoryCollector:
             episode_lengths=episode_lengths,
         )
         if dump_eval_traces:
-            self._dump_eval_step_traces(step_traces=step_traces, uid_batch=uid_batch, traj_uid=traj_uid, reset_infos=reset_infos)
+            terminal_infos = self._extract_terminal_infos(total_batch_list=total_batch_list, total_infos=total_infos)
+            self._dump_eval_step_traces(
+                step_traces=step_traces,
+                uid_batch=uid_batch,
+                traj_uid=traj_uid,
+                reset_infos=reset_infos,
+                terminal_infos=terminal_infos,
+            )
         return total_batch_list, episode_rewards, episode_lengths, success, traj_uid, tool_callings
 
     def multi_turn_loop(self, gen_batch: DataProto, actor_rollout_wg, envs, is_train: bool = True) -> DataProto:
