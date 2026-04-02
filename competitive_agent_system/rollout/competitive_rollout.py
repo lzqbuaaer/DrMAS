@@ -110,14 +110,6 @@ class CompetitiveTrajectoryCollector:
                 json.dump(payload, f, ensure_ascii=False, indent=2)
 
     def _log_eval_step_progress(self, step_idx: int, infos: list[dict], raw_texts_by_run: list[dict[str, str]] | None = None) -> None:
-        env_name = str(self.config.env.env_name).lower()
-        if raw_texts_by_run is not None and "duopoly" in env_name:
-            for run_idx, raw_text_by_agent in enumerate(raw_texts_by_run):
-                print(f"[duopoly eval] step={step_idx} run={run_idx} responses:")
-                for agent_id in self.config.agent.agent_ids:
-                    print(f"[duopoly eval] {agent_id}:")
-                    print(raw_text_by_agent.get(agent_id, ""))
-
         batch_prices = [info.get("prices_by_agent", {}) for info in infos]
         if any(prices for prices in batch_prices):
             print(f"[competitive eval] step={step_idx} batch_prices={batch_prices}")
