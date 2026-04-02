@@ -55,6 +55,10 @@ class CompetitiveTurnOrchestra:
         for agent in self.agents.values():
             agent.reset()
 
+    def _populate_row_defaults(self, row_list: list[dict], saved_actions: list) -> None:
+        for idx, row in enumerate(row_list):
+            row["is_action_valid"] = saved_actions[idx].valid
+
     def _call_single_agent(self, agent_id: str, gen_batch: DataProto, obs_texts: list[str], actor_rollout_wg, active_masks: np.ndarray, step: int):
         attempts = np.zeros(len(obs_texts), dtype=np.int32)
         remaining = active_masks.copy()
@@ -71,6 +75,7 @@ class CompetitiveTurnOrchestra:
                 step=step,
             )
             row_list = to_list_of_dict(batch)
+            self._populate_row_defaults(row_list, saved_actions)
 
             if saved_rows is None:
                 saved_rows = row_list
@@ -89,6 +94,9 @@ class CompetitiveTurnOrchestra:
                 next_remaining[idx] = (not parsed.valid) and (attempts[idx] < self.parser.max_retries)
 
             remaining = next_remaining
+
+        if saved_rows is None:
+            raise RuntimeError(f"No saved rows were produced for agent {agent_id} at step {step}")
 
         final_batch = DataProto.from_single_dict(collate_fn(saved_rows))
         final_batch.non_tensor_batch["is_action_valid"] = np.array([action.valid for action in saved_actions], dtype=bool)

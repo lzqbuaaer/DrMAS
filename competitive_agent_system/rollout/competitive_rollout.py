@@ -109,14 +109,26 @@ class CompetitiveTrajectoryCollector:
             with open(filename, "w", encoding="utf-8") as f:
                 json.dump(payload, f, ensure_ascii=False, indent=2)
 
-    def _log_eval_step_progress(self, step_idx: int, infos: list[dict], dones: np.ndarray) -> None:
+    def _log_eval_step_progress(self, step_idx: int, infos: list[dict], raw_texts_by_run: list[dict[str, str]] | None = None) -> None:
         batch_prices = [info.get("prices_by_agent", {}) for info in infos]
         if any(prices for prices in batch_prices):
             print(f"[competitive eval] step={step_idx} batch_prices={batch_prices}")
+        else:
+            batch_quantities = [info.get("quantities_by_agent", {}) for info in infos]
+            print(f"[competitive eval] step={step_idx} batch_quantities={batch_quantities}")
+
+        if raw_texts_by_run is None:
             return
 
-        batch_quantities = [info.get("quantities_by_agent", {}) for info in infos]
-        print(f"[competitive eval] step={step_idx} batch_quantities={batch_quantities}")
+        env_name = str(self.config.env.env_name).lower()
+        if "duopoly" not in env_name:
+            return
+
+        for run_idx, raw_text_by_agent in enumerate(raw_texts_by_run):
+            print(f"[duopoly eval] step={step_idx} run={run_idx} responses:")
+            for agent_id in self.config.agent.agent_ids:
+                print(f"[duopoly eval] {agent_id}:")
+                print(raw_text_by_agent.get(agent_id, ""))
 
     def gather_rollout_data(self, total_batch_list, episode_rewards, episode_lengths, success, traj_uid, tool_callings) -> DataProto:
         effective_batch = []
@@ -172,12 +184,15 @@ class CompetitiveTrajectoryCollector:
             episode_rewards[active_masks] += torch_to_numpy(rewards)[active_masks]
             episode_lengths[active_masks] += 1
 
+            raw_texts_by_run = []
             for i in range(batch_size):
                 if not active_masks[i]:
+                    raw_texts_by_run.append({agent_id: actions_by_agent[agent_id][i].raw_text for agent_id in self.config.agent.agent_ids})
                     continue
                 raw_text_by_agent = {
                     agent_id: actions_by_agent[agent_id][i].raw_text for agent_id in self.config.agent.agent_ids
                 }
+                raw_texts_by_run.append(raw_text_by_agent)
                 step_traces[i].append(
                     {
                         "step": step_idx + 1,
@@ -211,7 +226,7 @@ class CompetitiveTrajectoryCollector:
                         total_infos[i].append(infos[i])
 
             if dump_eval_traces:
-                self._log_eval_step_progress(step_idx=step_idx + 1, infos=infos, dones=dones)
+                self._log_eval_step_progress(step_idx=step_idx + 1, infos=infos, raw_texts_by_run=raw_texts_by_run)
 
             is_done = np.logical_or(is_done, dones)
             obs = next_obs
