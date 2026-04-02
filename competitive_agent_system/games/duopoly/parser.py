@@ -20,16 +20,16 @@ class DuopolyActionParser:
         return value
 
     def extract_block(self, text: str, tag: str) -> str | None:
-        match = re.search(rf"<{tag}>(.*?)</{tag}>", text, flags=re.DOTALL)
-        if match is None:
+        matches = re.findall(rf"<{tag}>(.*?)</{tag}>", text, flags=re.DOTALL)
+        if not matches:
             return None
-        return match.group(1).strip()
+        return matches[-1].strip()
 
     def extract_price(self, text: str) -> float | None:
-        match = re.search(r"<PRICE>\s*([-+]?\d+(?:\.\d+)?)\s*</PRICE>", text, flags=re.DOTALL)
-        if match is None:
+        matches = re.findall(r"<PRICE>\s*([-+]?\d+(?:\.\d+)?)\s*</PRICE>", text, flags=re.DOTALL)
+        if not matches:
             return None
-        value = float(match.group(1))
+        value = float(matches[-1])
         if not math.isfinite(value) or value < 0:
             return None
         return value
