@@ -186,9 +186,9 @@ class ActorRolloutRefWorker(Worker):
         from torch import optim
         from torch.distributed.fsdp import CPUOffload, MixedPrecision
         from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
-        from transformers import AutoConfig, AutoModelForCausalLM, AutoModelForVision2Seq
+        from transformers import AutoConfig, AutoModelForCausalLM
 
-        from verl.utils.model import get_generation_config, print_model_size, update_model_config
+        from verl.utils.model import get_auto_model_for_vision2seq_cls, get_generation_config, print_model_size, update_model_config
         from verl.utils.torch_dtypes import PrecisionType
 
         assert role in ["actor", "ref"]
@@ -231,8 +231,9 @@ class ActorRolloutRefWorker(Worker):
 
         with init_context(), warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            if type(actor_model_config) in AutoModelForVision2Seq._model_mapping.keys():
-                actor_module_class = AutoModelForVision2Seq
+            vision2seq_cls = get_auto_model_for_vision2seq_cls()
+            if vision2seq_cls is not None and type(actor_model_config) in vision2seq_cls._model_mapping.keys():
+                actor_module_class = vision2seq_cls
             else:
                 actor_module_class = AutoModelForCausalLM
 

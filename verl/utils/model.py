@@ -15,6 +15,7 @@
 Utilities to create common models from huggingface
 """
 
+import importlib
 import os
 import warnings
 from typing import Dict, Optional, Type
@@ -84,6 +85,19 @@ def get_generation_config(
             return GenerationConfig.from_model_config(config)
         except OSError:  # Not found
             return None
+
+
+def get_auto_model_for_vision2seq_cls():
+    try:
+        transformers = importlib.import_module("transformers")
+    except ModuleNotFoundError:
+        return None
+
+    if hasattr(transformers, "AutoModelForVision2Seq"):
+        return transformers.AutoModelForVision2Seq
+    if hasattr(transformers, "AutoModelForImageTextToText"):
+        return transformers.AutoModelForImageTextToText
+    return None
 
 
 def create_huggingface_actor(model_name: str, override_config_kwargs=None, automodel_kwargs=None) -> nn.Module:
