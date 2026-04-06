@@ -31,7 +31,6 @@ import torch
 import torch.distributed as dist
 from omegaconf import DictConfig
 from sglang.srt.entrypoints.engine import Engine
-from sglang.srt.openai_api.protocol import Tool
 from sglang.srt.sampling.sampling_params import SamplingParams
 from sglang.srt.utils import get_ip, get_open_port
 from tensordict import TensorDict
@@ -112,6 +111,24 @@ def get_tool_call_parser_type(tokenizer: PreTrainedTokenizer) -> str:
             return parser_type
     else:
         raise ValueError(f"No tool call parser found for tokenizer {tokenizer}")
+
+
+def get_sglang_tool_cls():
+    candidate_imports = [
+        ("sglang.srt.openai_api.protocol", "Tool"),
+        ("sglang.srt.openai.protocol", "Tool"),
+        ("sglang.srt.entrypoints.openai.protocol", "Tool"),
+    ]
+    for module_name, attr_name in candidate_imports:
+        try:
+            module = __import__(module_name, fromlist=[attr_name])
+            return getattr(module, attr_name)
+        except (ImportError, AttributeError):
+            continue
+    raise ImportError(
+        "Could not import Tool from sglang. Tried: "
+        + ", ".join(f"{module_name}.{attr_name}" for module_name, attr_name in candidate_imports)
+    )
 
 
 class SGLangRollout(BaseRollout):
@@ -337,6 +354,7 @@ class SGLangRollout(BaseRollout):
         import sys
 
         from omegaconf import OmegaConf
+        Tool = get_sglang_tool_cls()
 
         from verl.tools.schemas import OpenAIFunctionToolSchema
 
