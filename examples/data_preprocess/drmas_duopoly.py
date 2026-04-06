@@ -14,7 +14,10 @@ def build_rows(split: str, seeds: range, alphas: list[float], prompt_prefix_type
                 rows.append(
                     {
                         "data_source": data_source,
-                        "prompt": [{"role": "system", "content": "You are a helpful and harmless assistant."}],
+                        "prompt": [
+                            {"role": "system", "content": "You are a helpful and harmless assistant."},
+                            {"role": "user", "content": "Begin the task."},
+                        ],
                         "ability": "competitive_pricing",
                         "reward_model": {"style": "rule"},
                         "extra_info": {

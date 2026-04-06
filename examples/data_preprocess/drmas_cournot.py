@@ -31,7 +31,10 @@ def build_rows(
                     rows.append(
                         {
                             "data_source": data_source,
-                            "prompt": [{"role": "system", "content": "You are a helpful and harmless assistant."}],
+                            "prompt": [
+                                {"role": "system", "content": "You are a helpful and harmless assistant."},
+                                {"role": "user", "content": "Begin the task."},
+                            ],
                             "ability": "competitive_allocation",
                             "reward_model": {"style": "rule"},
                             "extra_info": {"split": split, "index": index},
