@@ -205,7 +205,7 @@ def preprocess_fn(
     })
 
     if config.data.get('return_raw_chat', False):
-        row_dict['raw_prompt'] = chat.tolist()
+        row_dict['raw_prompt'] = chat
     
     return row_dict
 

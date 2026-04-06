@@ -74,7 +74,7 @@ def main_task(config):
     dataset = pd.read_parquet(config.data.path)
     chat_lst = dataset[config.data.prompt_key].tolist()
 
-    chat_lst = [chat.tolist() for chat in chat_lst]
+    chat_lst = [chat if isinstance(chat, list) else chat.tolist() for chat in chat_lst]
 
     tokenizer.padding_side = "left"
     if tokenizer.pad_token is None:
