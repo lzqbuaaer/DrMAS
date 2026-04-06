@@ -117,10 +117,10 @@ def preprocess_fn(
     #     print(f"Warning: No text observation found!")
 
     obs_content = obs_text
-    chat = np.array([
+    chat = [
         {"content": system_prompt, "role": "system"},
-        {"content": obs_content, "role": "user",}
-        ])
+        {"content": obs_content, "role": "user"},
+    ]
     # Apply chat template
     prompt_with_chat_template = tokenizer.apply_chat_template(
         chat,
@@ -454,4 +454,3 @@ def filter_group_data(batch_list : List[Dict],
     tool_callings = tool_callings[keep_indices]
 
     return batch_list, episode_rewards, episode_lengths, success, traj_uid, tool_callings
-
