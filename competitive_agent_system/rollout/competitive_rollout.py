@@ -153,6 +153,8 @@ class CompetitiveTrajectoryCollector:
 
         for step_idx in range(self.config.env.max_steps):
             active_masks = np.logical_not(is_done)
+            if dump_eval_traces:
+                print(f"[competitive eval] step={step_idx + 1} entering_run_turn active_runs={int(np.count_nonzero(active_masks))}")
             actions_by_agent, multiagent_batch_buffer = self.orchestra.run_turn(
                 gen_batch=gen_batch,
                 env_obs=obs,
@@ -160,7 +162,11 @@ class CompetitiveTrajectoryCollector:
                 active_masks=active_masks,
                 step=step_idx + 1,
             )
+            if dump_eval_traces:
+                print(f"[competitive eval] step={step_idx + 1} finished_run_turn")
             next_obs, rewards, dones, infos = envs.step(actions_by_agent)
+            if dump_eval_traces:
+                print(f"[competitive eval] step={step_idx + 1} finished_env_step")
 
             if len(rewards.shape) == 2:
                 rewards = rewards.squeeze(1)

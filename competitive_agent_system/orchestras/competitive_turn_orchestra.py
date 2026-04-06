@@ -33,6 +33,9 @@ class CompetitiveTurnOrchestra:
         }
         self.parser = self._build_parser()
 
+    def _should_log_eval_debug(self) -> bool:
+        return bool(getattr(self.config.trainer, "val_only", False))
+
     def _build_parser(self):
         env_name = str(self.config.env.env_name).lower()
         if "duopoly" in env_name:
@@ -65,6 +68,7 @@ class CompetitiveTurnOrchestra:
         saved_rows = None
         parse_kwargs = self._build_parse_kwargs(obs_texts)
         saved_actions = [self.parser.parse("", **parse_kwargs[idx]) for idx in range(len(obs_texts))]
+        debug_eval = self._should_log_eval_debug()
 
         while remaining.any() and np.any(attempts[remaining] < self.parser.max_retries):
             batch, text_responses = self.agents[agent_id].call(
@@ -92,6 +96,15 @@ class CompetitiveTurnOrchestra:
                 saved_rows[idx] = row_list[idx]
                 saved_actions[idx] = parsed
                 next_remaining[idx] = (not parsed.valid) and (attempts[idx] < self.parser.max_retries)
+
+            if debug_eval:
+                remaining_count = int(np.count_nonzero(next_remaining))
+                if remaining_count > 0:
+                    current_max_attempt = int(attempts.max(initial=0))
+                    print(
+                        f"[competitive eval] step={step} agent={agent_id} retry_pending={remaining_count} "
+                        f"current_max_attempt={current_max_attempt}/{self.parser.max_retries}"
+                    )
 
             remaining = next_remaining
 
