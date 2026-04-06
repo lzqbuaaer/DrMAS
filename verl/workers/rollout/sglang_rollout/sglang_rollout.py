@@ -162,6 +162,29 @@ def get_sglang_net_utils():
     return _fallback_get_ip, _fallback_get_open_port
 
 
+def get_model_context_length(model_hf_config) -> int | None:
+    candidate_paths = [
+        ("max_position_embeddings",),
+        ("llm_config", "max_position_embeddings"),
+        ("text_config", "max_position_embeddings"),
+        ("language_config", "max_position_embeddings"),
+        ("llm_config", "text_config", "max_position_embeddings"),
+        ("llm_config", "language_config", "max_position_embeddings"),
+        ("text_config", "text_config", "max_position_embeddings"),
+    ]
+    for path in candidate_paths:
+        current = model_hf_config
+        found = True
+        for attr in path:
+            if not hasattr(current, attr):
+                found = False
+                break
+            current = getattr(current, attr)
+        if found and current is not None:
+            return int(current)
+    return None
+
+
 class SGLangRollout(BaseRollout):
     def __init__(
         self,
@@ -271,7 +294,16 @@ class SGLangRollout(BaseRollout):
             self.config.max_model_len = self.config.prompt_length + self.config.response_length
         assert self.config.max_model_len >= self.config.prompt_length + self.config.response_length, f"""max_model_len should be greater than total sequence length (prompt_length + response_length): 
             {self.config.max_model_len} >= {self.config.prompt_length} + {self.config.response_length}"""
-        assert model_hf_config.max_position_embeddings >= self.config.max_model_len, "model context length should be greater than total sequence length"
+        rope_scaling_config = getattr(model_hf_config, "rope_scaling", None)
+        if not rope_scaling_config:
+            max_context_length = get_model_context_length(model_hf_config)
+            if max_context_length is None:
+                raise ValueError(
+                    "Could not infer model context length from model_hf_config. "
+                    "Expected one of max_position_embeddings, llm_config.max_position_embeddings, "
+                    "or text_config.max_position_embeddings."
+                )
+            assert max_context_length >= self.config.max_model_len, "model context length should be greater than total sequence length"
         # currently max_turns stand for max number of tool calls
         if self.config.multi_turn.max_turns is None:
             self.config.multi_turn.max_turns = self.config.max_model_len // 3
