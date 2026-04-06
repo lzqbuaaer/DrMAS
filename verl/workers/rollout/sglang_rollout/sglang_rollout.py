@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import asyncio
+import socket
 import logging
 import math
 import os
@@ -32,7 +33,6 @@ import torch.distributed as dist
 from omegaconf import DictConfig
 from sglang.srt.entrypoints.engine import Engine
 from sglang.srt.sampling.sampling_params import SamplingParams
-from sglang.srt.utils import get_ip, get_open_port
 from tensordict import TensorDict
 from torch.distributed.device_mesh import DeviceMesh, init_device_mesh
 from torch.nn.utils.rnn import pad_sequence
@@ -129,6 +129,37 @@ def get_sglang_tool_cls():
         "Could not import Tool from sglang. Tried: "
         + ", ".join(f"{module_name}.{attr_name}" for module_name, attr_name in candidate_imports)
     )
+
+
+def get_sglang_net_utils():
+    candidate_imports = [
+        ("sglang.srt.utils", "get_ip", "get_open_port"),
+        ("sglang.srt.entrypoints.utils", "get_ip", "get_open_port"),
+    ]
+    for module_name, get_ip_name, get_open_port_name in candidate_imports:
+        try:
+            module = __import__(module_name, fromlist=[get_ip_name, get_open_port_name])
+            return getattr(module, get_ip_name), getattr(module, get_open_port_name)
+        except (ImportError, AttributeError):
+            continue
+
+    def _fallback_get_ip():
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            sock.connect(("8.8.8.8", 80))
+            return sock.getsockname()[0]
+        except OSError:
+            return "127.0.0.1"
+        finally:
+            sock.close()
+
+    def _fallback_get_open_port():
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind(("", 0))
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            return sock.getsockname()[1]
+
+    return _fallback_get_ip, _fallback_get_open_port
 
 
 class SGLangRollout(BaseRollout):
@@ -249,6 +280,7 @@ class SGLangRollout(BaseRollout):
         # initialize the inference engine
         nnodes = -(-self._tp_size // len(self.visible_devices_set))
         if nnodes > 1:
+            get_ip, get_open_port = get_sglang_net_utils()
             ip = get_ip()
             port = get_open_port() if port is None else port
             [ip, port] = broadcast_pyobj(
