@@ -734,6 +734,52 @@ class RayPPOTrainer:
         # Log to each configured logger
         self.validation_generations_logger.log(self.config.trainer.logger, samples, self.global_steps)
 
+    def _get_task_rollout_metric_fields(self) -> list[str]:
+        env_name = str(self.config.env.env_name).lower()
+        env_cfg = self.config.env.get(env_name, None)
+        if env_cfg is None:
+            return []
+        metric_fields = env_cfg.get("rollout_metric_fields", [])
+        return list(metric_fields) if metric_fields is not None else []
+
+    def _collect_configured_val_metrics(self, batch: DataProto, val_metric_field_lists: dict[str, list]) -> None:
+        for field_name in self._get_task_rollout_metric_fields():
+            if field_name in batch.non_tensor_batch:
+                val_metric_field_lists[field_name].append(batch.non_tensor_batch[field_name])
+
+    def _build_val_metric_arrays(self, val_metric_field_lists: dict[str, list]) -> dict[str, np.ndarray]:
+        val_metric_arrays = {}
+        for field_name, chunks in val_metric_field_lists.items():
+            if chunks:
+                val_metric_arrays[field_name] = np.concatenate(chunks, axis=0)
+        return val_metric_arrays
+
+    def _add_grouped_val_metrics(self, metric_dict: dict[str, float], val_metric_arrays: dict[str, np.ndarray], unique_idx: np.ndarray, unique_data_sources: np.ndarray) -> None:
+        if not val_metric_arrays:
+            return
+
+        for data_source in set(unique_data_sources):
+            data_source_mask = unique_data_sources == data_source
+            if not np.any(data_source_mask):
+                continue
+
+            for field_name, values in val_metric_arrays.items():
+                metric_dict[f"val/{data_source}/{field_name}"] = np.mean(values[unique_idx][data_source_mask])
+
+            # Auto-derive /mean for paired firm metrics when both firm1 and firm2 exist.
+            for field_name in list(val_metric_arrays.keys()):
+                if not field_name.endswith("/firm1"):
+                    continue
+                paired_field = field_name[:-len("/firm1")] + "/firm2"
+                if paired_field not in val_metric_arrays:
+                    continue
+                base_field = field_name[:-len("/firm1")]
+                mean_values = 0.5 * (
+                    val_metric_arrays[field_name][unique_idx][data_source_mask]
+                    + val_metric_arrays[paired_field][unique_idx][data_source_mask]
+                )
+                metric_dict[f"val/{data_source}/{base_field}/mean"] = np.mean(mean_values)
+
     def _validate(self):
         reward_tensor_lst = []
         data_source_lst = []
@@ -741,6 +787,7 @@ class RayPPOTrainer:
         traj_uid_list = []
         uid_list = []  # Add uid collection for grouping
         task_pass_lst = []
+        val_metric_field_lists = defaultdict(list)
         # success_rate_dict = {}
 
         # Lists to collect samples for the table
@@ -829,6 +876,7 @@ class RayPPOTrainer:
             traj_uid_list.append(test_output_gen_batch.non_tensor_batch['traj_uid'])
             uid_list.append(test_output_gen_batch.non_tensor_batch['uid'])  # Collect uid for grouping
             task_pass_lst.append(test_output_gen_batch.non_tensor_batch['pass'])
+            self._collect_configured_val_metrics(test_output_gen_batch, val_metric_field_lists)
 
             # Update validation progress bar
             val_progress_bar.update(1)
@@ -887,6 +935,14 @@ class RayPPOTrainer:
             metric_dict[f'val/{data_source}/tool_call_count/mean'] = np.mean(tool_calls)
             # metric_dict[f'val/{data_source}/tool_call_count/max'] = np.max(tool_calls)
             # metric_dict[f'val/{data_source}/tool_call_count/min'] = np.min(tool_calls)
+
+        val_metric_arrays = self._build_val_metric_arrays(val_metric_field_lists)
+        self._add_grouped_val_metrics(
+            metric_dict=metric_dict,
+            val_metric_arrays=val_metric_arrays,
+            unique_idx=unique_idx,
+            unique_data_sources=unique_data_sources,
+        )
 
         # for k, v in success_rate.items():
         #     metric_dict[f'val/{k.replace("success_rate", "pass@1")}'] = v

@@ -334,6 +334,38 @@ env:
     prompt_prefix_type: P1
     history_window: 100
     max_parse_retry: 10
+    rollout_metric_fields:
+      - tail20pct_window_size
+      - cooperation_last20pct/firm1
+      - cooperation_last20pct/firm2
+      - collusion_last20pct/firm1
+      - collusion_last20pct/firm2
+      - tail20pct_avg_price/firm1
+      - tail20pct_avg_price/firm2
+      - tail20pct_avg_profit/firm1
+      - tail20pct_avg_profit/firm2
+      - consumer_surplus_last20pct
+      - train_reward/firm1
+      - train_reward/firm2
+    eval_dump_fields:
+      tail20pct_window_size: tail20pct_window_size
+      cooperation_last20pct_by_agent:
+        kind: agent_pair
+        firm1: cooperation_last20pct/firm1
+        firm2: cooperation_last20pct/firm2
+      collusion_last20pct_by_agent:
+        kind: agent_pair
+        firm1: collusion_last20pct/firm1
+        firm2: collusion_last20pct/firm2
+      tail20pct_avg_price_by_agent:
+        kind: agent_pair
+        firm1: tail20pct_avg_price/firm1
+        firm2: tail20pct_avg_price/firm2
+      tail20pct_avg_profit_by_agent:
+        kind: agent_pair
+        firm1: tail20pct_avg_profit/firm1
+        firm2: tail20pct_avg_profit/firm2
+      consumer_surplus_last20pct: consumer_surplus_last20pct
   cournot:
     alpha: 100.0
     neg_inverse_beta: -0.5
@@ -346,3 +378,25 @@ env:
     marginal_cost_1b: 50.0
     marginal_cost_2a: 50.0
     marginal_cost_2b: 40.0
+    rollout_metric_fields:
+      - tail20pct_window_size
+      - hhi_last20pct/product_a
+      - hhi_last20pct/product_b
+      - hhi_last20pct/mean
+      - consumer_surplus_last20pct/product_a
+      - consumer_surplus_last20pct/product_b
+      - consumer_surplus_last20pct/total
+    eval_dump_fields:
+      tail20pct_window_size: tail20pct_window_size
+      hhi_last20pct:
+        kind: dict
+        fields:
+          product_a: hhi_last20pct/product_a
+          product_b: hhi_last20pct/product_b
+          mean: hhi_last20pct/mean
+      consumer_surplus_last20pct:
+        kind: dict
+        fields:
+          product_a: consumer_surplus_last20pct/product_a
+          product_b: consumer_surplus_last20pct/product_b
+          total: consumer_surplus_last20pct/total

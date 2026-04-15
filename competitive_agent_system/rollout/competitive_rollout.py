@@ -56,6 +56,54 @@ class CompetitiveTrajectoryCollector:
             terminal_infos.append(terminal_info)
         return terminal_infos
 
+    def _get_task_env_cfg(self):
+        env_name = str(self.config.env.env_name).lower()
+        return self.config.env.get(env_name, None)
+
+    def _get_task_rollout_metric_fields(self) -> list[str]:
+        env_cfg = self._get_task_env_cfg()
+        if env_cfg is None:
+            return []
+        rollout_metric_fields = env_cfg.get("rollout_metric_fields", [])
+        return list(rollout_metric_fields) if rollout_metric_fields is not None else []
+
+    def _get_task_eval_dump_fields(self):
+        env_cfg = self._get_task_env_cfg()
+        if env_cfg is None:
+            return {}
+        eval_dump_fields = env_cfg.get("eval_dump_fields", {})
+        return eval_dump_fields if eval_dump_fields is not None else {}
+
+    def _resolve_eval_dump_payload(self, terminal_info: dict) -> dict:
+        resolved_payload = {}
+        if not terminal_info:
+            return resolved_payload
+
+        agent_ids = list(self.config.agent.agent_ids)
+        eval_dump_fields = self._get_task_eval_dump_fields()
+
+        for payload_key, spec in eval_dump_fields.items():
+            if isinstance(spec, str):
+                resolved_payload[payload_key] = terminal_info.get(spec)
+                continue
+
+            if not hasattr(spec, "get"):
+                continue
+
+            kind = spec.get("kind", "scalar")
+            if kind == "agent_pair":
+                resolved_payload[payload_key] = {
+                    agent_ids[0]: terminal_info.get(spec.get("firm1")),
+                    agent_ids[1]: terminal_info.get(spec.get("firm2")),
+                }
+            elif kind == "dict":
+                fields = spec.get("fields", {})
+                resolved_payload[payload_key] = {sub_key: terminal_info.get(source_key) for sub_key, source_key in fields.items()}
+            elif kind == "scalar":
+                resolved_payload[payload_key] = terminal_info.get(spec.get("field"))
+
+        return resolved_payload
+
     def _dump_eval_step_traces(self, step_traces, uid_batch, traj_uid, reset_infos, terminal_infos) -> None:
         dump_dir = self._get_eval_dump_dir()
         for idx, trace in enumerate(step_traces):
@@ -79,31 +127,7 @@ class CompetitiveTrajectoryCollector:
                     payload[key] = first_step.get(key)
 
             if terminal_info:
-                agent_ids = list(self.config.agent.agent_ids)
-                payload["tail20pct_window_size"] = terminal_info.get("tail20pct_window_size")
-                payload["cooperation_last20pct_by_agent"] = {
-                    agent_ids[0]: terminal_info.get("cooperation_last20pct/firm1"),
-                    agent_ids[1]: terminal_info.get("cooperation_last20pct/firm2"),
-                }
-                payload["collusion_last20pct_by_agent"] = {
-                    agent_ids[0]: terminal_info.get("collusion_last20pct/firm1"),
-                    agent_ids[1]: terminal_info.get("collusion_last20pct/firm2"),
-                }
-                if "consumer_surplus_last20pct" in terminal_info:
-                    payload["consumer_surplus_last20pct"] = terminal_info.get("consumer_surplus_last20pct")
-                if "hhi_last20pct/product_a" in terminal_info or "hhi_last20pct/product_b" in terminal_info:
-                    payload["tail20pct_window_size"] = terminal_info.get("tail20pct_window_size")
-                    payload["hhi_last20pct"] = {
-                        "product_a": terminal_info.get("hhi_last20pct/product_a"),
-                        "product_b": terminal_info.get("hhi_last20pct/product_b"),
-                        "mean": terminal_info.get("hhi_last20pct/mean"),
-                    }
-                if "consumer_surplus_last20pct/product_a" in terminal_info or "consumer_surplus_last20pct/product_b" in terminal_info:
-                    payload["consumer_surplus_last20pct"] = {
-                        "product_a": terminal_info.get("consumer_surplus_last20pct/product_a"),
-                        "product_b": terminal_info.get("consumer_surplus_last20pct/product_b"),
-                        "total": terminal_info.get("consumer_surplus_last20pct/total"),
-                    }
+                payload.update(self._resolve_eval_dump_payload(terminal_info))
 
             filename = os.path.join(dump_dir, f"{traj_uid[idx]}.json")
             with open(filename, "w", encoding="utf-8") as f:
@@ -117,15 +141,33 @@ class CompetitiveTrajectoryCollector:
             batch_quantities = [info.get("quantities_by_agent", {}) for info in infos]
             print(f"[competitive eval] step={step_idx} batch_quantities={batch_quantities}")
 
-    def gather_rollout_data(self, total_batch_list, episode_rewards, episode_lengths, success, traj_uid, tool_callings) -> DataProto:
+    def _get_agent_specific_episode_reward(self, terminal_info: dict, agent_id: str, fallback_reward: float) -> float:
+        agent_ids = list(self.config.agent.agent_ids)
+        if len(agent_ids) >= 2:
+            if agent_id == agent_ids[0]:
+                return float(terminal_info.get("train_reward/firm1", fallback_reward))
+            if agent_id == agent_ids[1]:
+                return float(terminal_info.get("train_reward/firm2", fallback_reward))
+        return float(fallback_reward)
+
+    def gather_rollout_data(self, total_batch_list, episode_rewards, episode_lengths, success, traj_uid, tool_callings, terminal_infos) -> DataProto:
         effective_batch = []
         for bs in range(len(total_batch_list)):
+            terminal_info = terminal_infos[bs] if bs < len(terminal_infos) else {}
             for data in total_batch_list[bs]:
                 if data["active_masks"]:
-                    data["episode_rewards"] = episode_rewards[bs]
+                    data["episode_rewards"] = self._get_agent_specific_episode_reward(
+                        terminal_info=terminal_info,
+                        agent_id=data["agent_id"],
+                        fallback_reward=episode_rewards[bs],
+                    )
                     data["episode_lengths"] = episode_lengths[bs]
                     data["tool_callings"] = tool_callings[bs]
                     data["pass"] = success["success_rate"][bs]
+                    if terminal_info:
+                        for key in self._get_task_rollout_metric_fields():
+                            if key in terminal_info:
+                                data[key] = terminal_info[key]
                     effective_batch.append(data)
 
         return DataProto.from_single_dict(data=collate_fn(effective_batch))
@@ -232,8 +274,8 @@ class CompetitiveTrajectoryCollector:
             episode_rewards=episode_rewards,
             episode_lengths=episode_lengths,
         )
+        terminal_infos = self._extract_terminal_infos(total_batch_list=total_batch_list, total_infos=total_infos)
         if dump_eval_traces:
-            terminal_infos = self._extract_terminal_infos(total_batch_list=total_batch_list, total_infos=total_infos)
             self._dump_eval_step_traces(
                 step_traces=step_traces,
                 uid_batch=uid_batch,
@@ -241,7 +283,7 @@ class CompetitiveTrajectoryCollector:
                 reset_infos=reset_infos,
                 terminal_infos=terminal_infos,
             )
-        return total_batch_list, episode_rewards, episode_lengths, success, traj_uid, tool_callings
+        return total_batch_list, episode_rewards, episode_lengths, success, traj_uid, tool_callings, terminal_infos
 
     def multi_turn_loop(self, gen_batch: DataProto, actor_rollout_wg, envs, is_train: bool = True) -> DataProto:
         if is_train:
@@ -255,7 +297,7 @@ class CompetitiveTrajectoryCollector:
             else:
                 effective_rollout_n = 1
 
-        total_batch_list, total_episode_rewards, total_episode_lengths, total_success, total_traj_uid, total_tool_callings = self.vanilla_multi_turn_loop(
+        total_batch_list, total_episode_rewards, total_episode_lengths, total_success, total_traj_uid, total_tool_callings, terminal_infos = self.vanilla_multi_turn_loop(
             gen_batch=gen_batch,
             actor_rollout_wg=actor_rollout_wg,
             envs=envs,
@@ -270,4 +312,5 @@ class CompetitiveTrajectoryCollector:
             success=total_success,
             traj_uid=total_traj_uid,
             tool_callings=total_tool_callings,
+            terminal_infos=terminal_infos,
         )

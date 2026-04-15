@@ -27,6 +27,8 @@ class DuopolyArenaEnv:
         return {agent_id: self.observer.build_observation(agent_id, self.game) for agent_id in self.agent_ids}
 
     def reset(self, extras: dict[str, Any]) -> tuple[dict[str, str], dict[str, Any]]:
+        extras = dict(extras)
+        extras["periods"] = int(self.config.env.max_steps)
         self.game.reset(extras)
         self._finished = False
         self._terminal_info = {
@@ -83,6 +85,8 @@ class CournotArenaEnv:
         return {agent_id: self.observer.build_observation(agent_id, self.game) for agent_id in self.agent_ids}
 
     def reset(self, extras: dict[str, Any]) -> tuple[dict[str, str], dict[str, Any]]:
+        extras = dict(extras)
+        extras["periods"] = int(self.config.env.max_steps)
         self.game.reset(extras)
         self._finished = False
         self._terminal_info = {

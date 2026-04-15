@@ -56,6 +56,7 @@ experiment_name="competitive_duopoly_${model_name_tag}"
 
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=$algorithm \
+    algorithm.group_by_agent_id=True \
     data.train_files=$TRAIN_DATA \
     data.val_files=$VAL_DATA \
     data.train_batch_size=$train_data_size \
@@ -91,7 +92,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.invalid_action_penalty_coef=0.01 \
     env.env_name=duopoly \
     env.seed=0 \
-    env.max_steps=100 \
+    env.max_steps=20 \
     env.rollout.n=$group_size \
     env.rollout.val_n=$val_group_size \
     env.duopoly.beta=$BETA \

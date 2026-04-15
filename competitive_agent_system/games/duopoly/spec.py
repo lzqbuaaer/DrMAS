@@ -92,6 +92,7 @@ class DuopolyGameSpec:
         self.last_step_quantity_by_agent: dict[str, float] = {}
         self.last_step_price_by_agent: dict[str, float] = {}
         self.price_history_by_agent: dict[str, list[float]] = {}
+        self.profit_history_by_agent: dict[str, list[float]] = {}
         self.consumer_surplus_history: list[float] = []
 
     def reset(self, scenario: dict[str, object]) -> None:
@@ -112,6 +113,7 @@ class DuopolyGameSpec:
         self.last_step_quantity_by_agent = {agent_id: 0.0 for agent_id in self.agent_ids}
         self.last_step_price_by_agent = {agent_id: 0.0 for agent_id in self.agent_ids}
         self.price_history_by_agent = {agent_id: [] for agent_id in self.agent_ids}
+        self.profit_history_by_agent = {agent_id: [] for agent_id in self.agent_ids}
         self.consumer_surplus_history = []
 
         self.p_monopoly = solve_symmetric_p_monopoly(self.alpha, self.a1, self.a0, self.mu, self.beta, self.c1)
@@ -191,6 +193,20 @@ class DuopolyGameSpec:
         tail_window = self._tail_window_size()
         return float(np.mean(self.consumer_surplus_history[-tail_window:]))
 
+    def _mean_tail_prices(self, agent_id: str) -> float:
+        prices = self.price_history_by_agent.get(agent_id, [])
+        if not prices:
+            return 0.0
+        tail_window = self._tail_window_size()
+        return float(np.mean(prices[-tail_window:]))
+
+    def _mean_tail_profits(self, agent_id: str) -> float:
+        profits = self.profit_history_by_agent.get(agent_id, [])
+        if not profits:
+            return 0.0
+        tail_window = self._tail_window_size()
+        return float(np.mean(profits[-tail_window:]))
+
     def step(self, actions: dict[str, CompetitiveAction]) -> CompetitiveStepResult:
         invalid_agents = [agent_id for agent_id, action in actions.items() if not action.valid]
         if invalid_agents:
@@ -210,6 +226,8 @@ class DuopolyGameSpec:
         self.last_step_profit_by_agent = {agent_1: pi1, agent_2: pi2}
         self.price_history_by_agent[agent_1].append(p1)
         self.price_history_by_agent[agent_2].append(p2)
+        self.profit_history_by_agent[agent_1].append(pi1)
+        self.profit_history_by_agent[agent_2].append(pi2)
         self.consumer_surplus_history.append(self.compute_consumer_surplus(p1, p2))
         self.cumulative_profit_by_agent[agent_1] += pi1
         self.cumulative_profit_by_agent[agent_2] += pi2
@@ -248,6 +266,10 @@ class DuopolyGameSpec:
 
     def summarize_episode(self) -> CompetitiveEpisodeSummary:
         agent_1, agent_2 = self.agent_ids
+        tail_avg_price_firm1 = self._mean_tail_prices(agent_1)
+        tail_avg_price_firm2 = self._mean_tail_prices(agent_2)
+        tail_avg_profit_firm1 = self._mean_tail_profits(agent_1)
+        tail_avg_profit_firm2 = self._mean_tail_profits(agent_2)
         cooperation_firm1 = self._mean_tail_alignment(agent_1, self.p_nash)
         cooperation_firm2 = self._mean_tail_alignment(agent_2, self.p_nash)
         collusion_firm1 = self._mean_tail_alignment(agent_1, self.p_monopoly)
@@ -261,10 +283,16 @@ class DuopolyGameSpec:
             "p_monopoly": self.p_monopoly,
             "p_nash": self.p_nash,
             "tail20pct_window_size": float(self._tail_window_size()),
+            "tail20pct_avg_price/firm1": tail_avg_price_firm1,
+            "tail20pct_avg_price/firm2": tail_avg_price_firm2,
+            "tail20pct_avg_profit/firm1": tail_avg_profit_firm1,
+            "tail20pct_avg_profit/firm2": tail_avg_profit_firm2,
             "cooperation_last20pct/firm1": cooperation_firm1,
             "cooperation_last20pct/firm2": cooperation_firm2,
             "collusion_last20pct/firm1": collusion_firm1,
             "collusion_last20pct/firm2": collusion_firm2,
             "consumer_surplus_last20pct": self._mean_tail_consumer_surplus(),
+            "train_reward/firm1": tail_avg_profit_firm1,
+            "train_reward/firm2": tail_avg_profit_firm2,
         }
         return CompetitiveEpisodeSummary(metrics=metrics, won=not self.failed and self.round_idx == self.max_periods, reason=None if not self.failed else "invalid_output")
