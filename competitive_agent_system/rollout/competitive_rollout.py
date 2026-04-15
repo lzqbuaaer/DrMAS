@@ -44,6 +44,9 @@ class CompetitiveTrajectoryCollector:
             os.makedirs(self.eval_dump_dir, exist_ok=True)
         return self.eval_dump_dir
 
+    def _is_eval_only(self) -> bool:
+        return bool(getattr(self.config.trainer, "val_only", False))
+
     def _extract_terminal_infos(self, total_batch_list, total_infos) -> list[dict]:
         terminal_infos = []
         for batch_idx in range(len(total_batch_list)):
@@ -156,14 +159,15 @@ class CompetitiveTrajectoryCollector:
             terminal_info = terminal_infos[bs] if bs < len(terminal_infos) else {}
             for data in total_batch_list[bs]:
                 if data["active_masks"]:
-                    data["episode_rewards"] = self._get_agent_specific_episode_reward(
+                    episode_reward = self._get_agent_specific_episode_reward(
                         terminal_info=terminal_info,
                         agent_id=data["agent_id"],
                         fallback_reward=episode_rewards[bs],
                     )
-                    data["episode_lengths"] = episode_lengths[bs]
-                    data["tool_callings"] = tool_callings[bs]
-                    data["pass"] = success["success_rate"][bs]
+                    data["episode_rewards"] = np.asarray(episode_reward, dtype=np.float32)
+                    data["episode_lengths"] = np.asarray(episode_lengths[bs], dtype=np.float32)
+                    data["tool_callings"] = np.asarray(tool_callings[bs], dtype=np.float32)
+                    data["pass"] = np.asarray(success["success_rate"][bs], dtype=np.float32)
                     if terminal_info:
                         for key in self._get_task_rollout_metric_fields():
                             if key in terminal_info:
@@ -192,10 +196,11 @@ class CompetitiveTrajectoryCollector:
         episode_rewards = np.zeros(batch_size, dtype=np.float32)
         tool_callings = np.zeros(batch_size, dtype=np.float32)
         step_traces = [[] for _ in range(batch_size)]
+        log_eval_progress = dump_eval_traces and self._is_eval_only()
 
         for step_idx in range(self.config.env.max_steps):
             active_masks = np.logical_not(is_done)
-            if dump_eval_traces:
+            if log_eval_progress:
                 print(f"[competitive eval] step={step_idx + 1} entering_run_turn active_runs={int(np.count_nonzero(active_masks))}")
             actions_by_agent, multiagent_batch_buffer = self.orchestra.run_turn(
                 gen_batch=gen_batch,
@@ -204,10 +209,10 @@ class CompetitiveTrajectoryCollector:
                 active_masks=active_masks,
                 step=step_idx + 1,
             )
-            if dump_eval_traces:
+            if log_eval_progress:
                 print(f"[competitive eval] step={step_idx + 1} finished_run_turn")
             next_obs, rewards, dones, infos = envs.step(actions_by_agent)
-            if dump_eval_traces:
+            if log_eval_progress:
                 print(f"[competitive eval] step={step_idx + 1} finished_env_step")
 
             if len(rewards.shape) == 2:
@@ -260,7 +265,7 @@ class CompetitiveTrajectoryCollector:
                         total_batch_list[i].append(agent_batch_list[i])
                         total_infos[i].append(infos[i])
 
-            if dump_eval_traces:
+            if log_eval_progress:
                 self._log_eval_step_progress(step_idx=step_idx + 1, infos=infos, raw_texts_by_run=raw_texts_by_run)
 
             is_done = np.logical_or(is_done, dones)

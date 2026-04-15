@@ -162,7 +162,7 @@ class DuopolyMultiProcessEnv:
         obs_list, info_list = map(list, zip(*results))
         obs_list = [o for o, keep in zip(obs_list, valid_mask) if keep]
         info_list = [i for i, keep in zip(info_list, valid_mask) if keep]
-        if not self.is_train:
+        if not self.is_train and bool(getattr(self.config.trainer, "val_only", False)):
             batch_stats = [
                 {
                     "data_source": info.get("data_source"),
@@ -253,7 +253,7 @@ class CournotMultiProcessEnv:
         obs_list, info_list = map(list, zip(*results))
         obs_list = [o for o, keep in zip(obs_list, valid_mask) if keep]
         info_list = [i for i, keep in zip(info_list, valid_mask) if keep]
-        if not self.is_train:
+        if not self.is_train and bool(getattr(self.config.trainer, "val_only", False)):
             batch_stats = [
                 {
                     "data_source": info.get("data_source"),
