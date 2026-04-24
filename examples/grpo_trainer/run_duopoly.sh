@@ -41,7 +41,7 @@ else
 fi
 
 algorithm=grpo
-group_size=1
+group_size=5
 
 agent_ids='["Firm 1 Agent","Firm 2 Agent"]'
 model_ids='["Qwen2.5-3B","Qwen2.5-3B"]'
@@ -111,7 +111,7 @@ python3 -m verl.trainer.main_ppo \
     trainer.experiment_name="$experiment_name" \
     trainer.n_gpus_per_node=4 \
     trainer.nnodes=1 \
-    trainer.save_freq=100 \
+    trainer.save_freq=8 \
     trainer.test_freq=5 \
     trainer.total_epochs=1 \
     trainer.val_only=$VAL_ONLY \
