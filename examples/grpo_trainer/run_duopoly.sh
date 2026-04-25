@@ -1,15 +1,15 @@
 set -x
 
-MODE=${1:-eval}
+MODE=${1:-train}
 
 DATA_LOCAL_DIR="$HOME/data/drmas_duopoly"
 # ALPHAS=("1.0" "3.2" "10.0")
 # PROMPT_PREFIX_TYPES=("P1" "P2")
 ALPHAS=("1.0")
 BETA="100.0"
-PROMPT_PREFIX_TYPES=("P2")
+PROMPT_PREFIX_TYPES=("P1")
 SEED_START=0
-TRAIN_SEED_COUNT=64
+TRAIN_SEED_COUNT=512
 TEST_SEED_COUNT=1
 TEST_SAMPLED_SEED_COUNT=4
 
@@ -35,17 +35,17 @@ else
     VAL_ONLY=False
     TRAIN_DATA="$DATA_LOCAL_DIR/train.parquet"
     VAL_DATA="$DATA_LOCAL_DIR/test_sampled.parquet"
-    train_data_size=8
-    val_data_size=8
+    train_data_size=4
+    val_data_size=4
     val_group_size=1
 fi
 
 algorithm=grpo
-group_size=1
+group_size=5
 
 agent_ids='["Firm 1 Agent","Firm 2 Agent"]'
-model_ids='["/devsft_AFS/liuzhiqian/DrMAS/model/Qwen2.5-3B","/devsft_AFS/liuzhiqian/DrMAS/model/Qwen2.5-3B"]'
-model_sharing=True
+model_ids='["Qwen2.5-3B","Qwen2.5-3B"]'
+model_sharing=False
 
 orchestra_type=duopoly
 actor_optim_lr='[1e-6,1e-6]'
@@ -109,9 +109,9 @@ python3 -m verl.trainer.main_ppo \
     trainer.logger=['console','wandb'] \
     trainer.project_name='DrMAS_duopoly' \
     trainer.experiment_name="$experiment_name" \
-    trainer.n_gpus_per_node=8 \
+    trainer.n_gpus_per_node=4 \
     trainer.nnodes=1 \
-    trainer.save_freq=100 \
+    trainer.save_freq=8 \
     trainer.test_freq=5 \
     trainer.total_epochs=1 \
     trainer.val_only=$VAL_ONLY \
