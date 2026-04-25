@@ -340,6 +340,8 @@ env:
       - cooperation_last20pct/firm2
       - collusion_last20pct/firm1
       - collusion_last20pct/firm2
+      - invalid_output/firm1
+      - invalid_output/firm2
       - tail20pct_avg_price/firm1
       - tail20pct_avg_price/firm2
       - tail20pct_avg_profit/firm1

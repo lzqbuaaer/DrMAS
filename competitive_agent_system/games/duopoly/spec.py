@@ -94,6 +94,8 @@ class DuopolyGameSpec:
         self.price_history_by_agent: dict[str, list[float]] = {}
         self.profit_history_by_agent: dict[str, list[float]] = {}
         self.consumer_surplus_history: list[float] = []
+        self.failure_train_reward_by_agent: dict[str, float] = {}
+        self.invalid_output_by_agent: dict[str, bool] = {}
 
     def reset(self, scenario: dict[str, object]) -> None:
         self.alpha = float(scenario.get("alpha", self.config.env.duopoly.alpha))
@@ -115,6 +117,8 @@ class DuopolyGameSpec:
         self.price_history_by_agent = {agent_id: [] for agent_id in self.agent_ids}
         self.profit_history_by_agent = {agent_id: [] for agent_id in self.agent_ids}
         self.consumer_surplus_history = []
+        self.failure_train_reward_by_agent = {agent_id: 0.0 for agent_id in self.agent_ids}
+        self.invalid_output_by_agent = {agent_id: False for agent_id in self.agent_ids}
 
         self.p_monopoly = solve_symmetric_p_monopoly(self.alpha, self.a1, self.a0, self.mu, self.beta, self.c1)
         self.p_nash = solve_symmetric_p_nash(self.alpha, self.a1, self.a0, self.mu, self.beta, self.c1)
@@ -156,13 +160,18 @@ class DuopolyGameSpec:
         for agent_id in self.agent_ids:
             self.private_states[agent_id].failed = True
 
-        rewards_by_agent = {agent_id: 0.0 for agent_id in self.agent_ids}
+        invalid_reward = -0.1 * self.beta
+        rewards_by_agent = {
+            agent_id: (invalid_reward if not actions[agent_id].valid else 0.0) for agent_id in self.agent_ids
+        }
+        self.failure_train_reward_by_agent = dict(rewards_by_agent)
+        self.invalid_output_by_agent = {agent_id: (not actions[agent_id].valid) for agent_id in self.agent_ids}
         info = {
             "data_source": self.data_source,
             "won": False,
             "failure_reason": reason,
             "rewards_by_agent": rewards_by_agent,
-            "profits_by_agent": rewards_by_agent,
+            "profits_by_agent": {agent_id: 0.0 for agent_id in self.agent_ids},
             "quantities_by_agent": {agent_id: 0.0 for agent_id in self.agent_ids},
             "prices_by_agent": {agent_id: actions[agent_id].payload.get("price") for agent_id in self.agent_ids},
             "p_monopoly": self.p_monopoly,
@@ -171,7 +180,13 @@ class DuopolyGameSpec:
             "retry_count_by_agent": {agent_id: actions[agent_id].retry_count for agent_id in self.agent_ids},
             "tool_calling": 0.0,
         }
-        return CompetitiveStepResult(reward=0.0, rewards_by_agent=rewards_by_agent, done=True, won=False, info=info)
+        return CompetitiveStepResult(
+            reward=float(np.mean(list(rewards_by_agent.values()))),
+            rewards_by_agent=rewards_by_agent,
+            done=True,
+            won=False,
+            info=info,
+        )
 
     def _tail_window_size(self) -> int:
         if self.round_idx <= 0:
@@ -274,6 +289,11 @@ class DuopolyGameSpec:
         cooperation_firm2 = self._mean_tail_alignment(agent_2, self.p_nash)
         collusion_firm1 = self._mean_tail_alignment(agent_1, self.p_monopoly)
         collusion_firm2 = self._mean_tail_alignment(agent_2, self.p_monopoly)
+        train_reward_firm1 = tail_avg_profit_firm1
+        train_reward_firm2 = tail_avg_profit_firm2
+        if self.failed:
+            train_reward_firm1 = self.failure_train_reward_by_agent.get(agent_1, train_reward_firm1)
+            train_reward_firm2 = self.failure_train_reward_by_agent.get(agent_2, train_reward_firm2)
         metrics = {
             "cumulative_profit/firm1": self.cumulative_profit_by_agent[agent_1],
             "cumulative_profit/firm2": self.cumulative_profit_by_agent[agent_2],
@@ -291,8 +311,10 @@ class DuopolyGameSpec:
             "cooperation_last20pct/firm2": cooperation_firm2,
             "collusion_last20pct/firm1": collusion_firm1,
             "collusion_last20pct/firm2": collusion_firm2,
+            "invalid_output/firm1": float(self.invalid_output_by_agent.get(agent_1, False)),
+            "invalid_output/firm2": float(self.invalid_output_by_agent.get(agent_2, False)),
             "consumer_surplus_last20pct": self._mean_tail_consumer_surplus(),
-            "train_reward/firm1": tail_avg_profit_firm1,
-            "train_reward/firm2": tail_avg_profit_firm2,
+            "train_reward/firm1": train_reward_firm1,
+            "train_reward/firm2": train_reward_firm2,
         }
         return CompetitiveEpisodeSummary(metrics=metrics, won=not self.failed and self.round_idx == self.max_periods, reason=None if not self.failed else "invalid_output")
