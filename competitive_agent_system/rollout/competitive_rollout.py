@@ -136,6 +136,207 @@ class CompetitiveTrajectoryCollector:
             with open(filename, "w", encoding="utf-8") as f:
                 json.dump(payload, f, ensure_ascii=False, indent=2)
 
+        self._dump_task_eval_summary(
+            step_traces=step_traces,
+            traj_uid=traj_uid,
+            reset_infos=reset_infos,
+            terminal_infos=terminal_infos,
+        )
+
+    def _build_duopoly_group_summary(
+        self,
+        data_source: str,
+        records: list[dict],
+        created_at: str,
+    ) -> dict:
+        agent_ids = list(self.config.agent.agent_ids)
+        agent_1, agent_2 = agent_ids[0], agent_ids[1]
+
+        valid_records = [record for record in records if record["valid"]]
+        all_invalid_firm1 = [float(record["invalid_output_by_agent"][agent_1]) for record in records]
+        all_invalid_firm2 = [float(record["invalid_output_by_agent"][agent_2]) for record in records]
+
+        def _mean_or_none(values: list[float]) -> float | None:
+            if not values:
+                return None
+            return float(np.mean(values))
+
+        valid_profit_firm1 = [record["tail20pct_avg_profit_by_agent"][agent_1] for record in valid_records]
+        valid_profit_firm2 = [record["tail20pct_avg_profit_by_agent"][agent_2] for record in valid_records]
+        valid_price_firm1 = [record["tail20pct_avg_price_by_agent"][agent_1] for record in valid_records]
+        valid_price_firm2 = [record["tail20pct_avg_price_by_agent"][agent_2] for record in valid_records]
+        valid_consumer_surplus = [record["consumer_surplus_last20pct"] for record in valid_records]
+
+        tail20pct_price_points = []
+        for record in valid_records:
+            tail_window_size = int(record["tail20pct_window_size"] or 0)
+            if tail_window_size <= 0:
+                continue
+            for step in record["steps"][-tail_window_size:]:
+                prices_by_agent = step.get("prices_by_agent", {})
+                if agent_1 not in prices_by_agent or agent_2 not in prices_by_agent:
+                    continue
+                tail20pct_price_points.append(
+                    {
+                        "traj_uid": record["traj_uid"],
+                        "step": step.get("step"),
+                        "firm1": float(prices_by_agent[agent_1]),
+                        "firm2": float(prices_by_agent[agent_2]),
+                    }
+                )
+
+        episodes = []
+        for record in records:
+            if record["valid"]:
+                episode_payload = {
+                    "traj_uid": record["traj_uid"],
+                    "data_source": record["data_source"],
+                    "valid": True,
+                    "tail20pct_avg_profit_by_agent": record["tail20pct_avg_profit_by_agent"],
+                    "tail20pct_avg_price_by_agent": record["tail20pct_avg_price_by_agent"],
+                    "consumer_surplus_last20pct": record["consumer_surplus_last20pct"],
+                    "invalid_output_by_agent": record["invalid_output_by_agent"],
+                }
+            else:
+                episode_payload = {
+                    "traj_uid": record["traj_uid"],
+                    "data_source": record["data_source"],
+                    "valid": False,
+                    "tail20pct_avg_profit_by_agent": None,
+                    "tail20pct_avg_price_by_agent": None,
+                    "consumer_surplus_last20pct": None,
+                    "invalid_output_by_agent": record["invalid_output_by_agent"],
+                }
+            episodes.append(episode_payload)
+
+        p_monopoly = next((record["p_monopoly"] for record in records if record["p_monopoly"] is not None), None)
+        p_nash = next((record["p_nash"] for record in records if record["p_nash"] is not None), None)
+
+        return {
+            "metadata": {
+                "experiment_name": str(self.config.trainer.experiment_name),
+                "env_name": str(self.config.env.env_name),
+                "created_at": created_at,
+                "data_source": data_source,
+                "episode_count_total": len(records),
+                "episode_count_valid": len(valid_records),
+                "episode_count_invalid": len(records) - len(valid_records),
+            },
+            "benchmarks": {
+                "p_monopoly": p_monopoly,
+                "p_nash": p_nash,
+            },
+            "overall": {
+                "tail20pct_avg_profit_by_agent": {
+                    agent_1: _mean_or_none(valid_profit_firm1),
+                    agent_2: _mean_or_none(valid_profit_firm2),
+                },
+                "tail20pct_avg_profit_mean": _mean_or_none(valid_profit_firm1 + valid_profit_firm2),
+                "tail20pct_avg_price_by_agent": {
+                    agent_1: _mean_or_none(valid_price_firm1),
+                    agent_2: _mean_or_none(valid_price_firm2),
+                },
+                "tail20pct_avg_price_mean": _mean_or_none(valid_price_firm1 + valid_price_firm2),
+                "consumer_surplus_last20pct": _mean_or_none(valid_consumer_surplus),
+                "invalid_output_rate_by_agent": {
+                    agent_1: _mean_or_none(all_invalid_firm1),
+                    agent_2: _mean_or_none(all_invalid_firm2),
+                },
+                "invalid_output_rate_mean": _mean_or_none(all_invalid_firm1 + all_invalid_firm2),
+            },
+            "episodes": episodes,
+            "tail20pct_price_points": tail20pct_price_points,
+        }
+
+    def _dump_duopoly_eval_summary(
+        self,
+        step_traces,
+        traj_uid,
+        reset_infos,
+        terminal_infos,
+    ) -> None:
+        from competitive_agent_system.games.duopoly.plotting import plot_tail20pct_price_scatter
+
+        created_at = datetime.now().isoformat(timespec="seconds")
+        grouped_records: dict[str, list[dict]] = {}
+        for idx, trace in enumerate(step_traces):
+            if not trace:
+                continue
+
+            reset_info = reset_infos[idx] if idx < len(reset_infos) else {}
+            terminal_info = terminal_infos[idx] if idx < len(terminal_infos) else {}
+            data_source = str(
+                terminal_info.get("data_source")
+                or reset_info.get("data_source")
+                or trace[0].get("data_source")
+                or "unknown"
+            )
+
+            invalid_output_by_agent = {
+                self.config.agent.agent_ids[0]: float(terminal_info.get("invalid_output/firm1", 0.0)),
+                self.config.agent.agent_ids[1]: float(terminal_info.get("invalid_output/firm2", 0.0)),
+            }
+            grouped_records.setdefault(data_source, []).append(
+                {
+                    "traj_uid": str(traj_uid[idx]),
+                    "data_source": data_source,
+                    "valid": not any(value > 0.0 for value in invalid_output_by_agent.values()),
+                    "tail20pct_window_size": terminal_info.get("tail20pct_window_size"),
+                    "tail20pct_avg_profit_by_agent": {
+                        self.config.agent.agent_ids[0]: terminal_info.get("tail20pct_avg_profit/firm1"),
+                        self.config.agent.agent_ids[1]: terminal_info.get("tail20pct_avg_profit/firm2"),
+                    },
+                    "tail20pct_avg_price_by_agent": {
+                        self.config.agent.agent_ids[0]: terminal_info.get("tail20pct_avg_price/firm1"),
+                        self.config.agent.agent_ids[1]: terminal_info.get("tail20pct_avg_price/firm2"),
+                    },
+                    "consumer_surplus_last20pct": terminal_info.get("consumer_surplus_last20pct"),
+                    "invalid_output_by_agent": invalid_output_by_agent,
+                    "p_monopoly": terminal_info.get("p_monopoly", reset_info.get("p_monopoly")),
+                    "p_nash": terminal_info.get("p_nash", reset_info.get("p_nash")),
+                    "steps": trace,
+                }
+            )
+
+        if not grouped_records:
+            return
+
+        dump_dir = self._get_eval_dump_dir()
+        overall_payload = {
+            "metadata": {
+                "experiment_name": str(self.config.trainer.experiment_name),
+                "env_name": str(self.config.env.env_name),
+                "created_at": created_at,
+                "data_source_count": len(grouped_records),
+            },
+            "groups": [],
+        }
+
+        for data_source, records in grouped_records.items():
+            group_summary = self._build_duopoly_group_summary(
+                data_source=data_source,
+                records=records,
+                created_at=created_at,
+            )
+            overall_payload["groups"].append(group_summary)
+
+            suffix = "" if len(grouped_records) == 1 else f"__{self._sanitize_path_component(data_source)}"
+            scatter_path = os.path.join(dump_dir, f"duopoly_tail20pct_price_scatter{suffix}.png")
+            plot_tail20pct_price_scatter(group_summary, scatter_path)
+
+        summary_path = os.path.join(dump_dir, "duopoly_eval_summary.json")
+        with open(summary_path, "w", encoding="utf-8") as f:
+            json.dump(overall_payload, f, ensure_ascii=False, indent=2)
+
+    def _dump_task_eval_summary(self, step_traces, traj_uid, reset_infos, terminal_infos) -> None:
+        if str(self.config.env.env_name).lower() == "duopoly":
+            self._dump_duopoly_eval_summary(
+                step_traces=step_traces,
+                traj_uid=traj_uid,
+                reset_infos=reset_infos,
+                terminal_infos=terminal_infos,
+            )
+
     def _log_eval_step_progress(self, step_idx: int, infos: list[dict], raw_texts_by_run: list[dict[str, str]] | None = None) -> None:
         batch_prices = [info.get("prices_by_agent", {}) for info in infos]
         if any(prices for prices in batch_prices):
