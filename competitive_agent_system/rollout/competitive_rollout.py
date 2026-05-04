@@ -228,19 +228,35 @@ class CompetitiveTrajectoryCollector:
         agent_1, agent_2 = agent_ids[0], agent_ids[1]
 
         valid_records = [record for record in records if record["valid"]]
-        all_invalid_firm1 = [float(record["invalid_output_by_agent"][agent_1]) for record in records]
-        all_invalid_firm2 = [float(record["invalid_output_by_agent"][agent_2]) for record in records]
+        all_invalid_firm1 = [float(record.get("invalid_output_by_agent", {}).get(agent_1, 0.0)) for record in records]
+        all_invalid_firm2 = [float(record.get("invalid_output_by_agent", {}).get(agent_2, 0.0)) for record in records]
 
         def _mean_or_none(values: list[float]) -> float | None:
             if not values:
                 return None
             return float(np.mean(values))
 
-        valid_profit_firm1 = [record["tail20pct_avg_profit_by_agent"][agent_1] for record in valid_records]
-        valid_profit_firm2 = [record["tail20pct_avg_profit_by_agent"][agent_2] for record in valid_records]
-        valid_price_firm1 = [record["tail20pct_avg_price_by_agent"][agent_1] for record in valid_records]
-        valid_price_firm2 = [record["tail20pct_avg_price_by_agent"][agent_2] for record in valid_records]
-        valid_consumer_surplus = [record["consumer_surplus_last20pct"] for record in valid_records]
+        def _collect_agent_metric(records: list[dict], field_name: str, agent_id: str) -> list[float]:
+            values = []
+            for record in records:
+                value = record.get(field_name, {}).get(agent_id)
+                if value is not None:
+                    values.append(float(value))
+            return values
+
+        def _collect_scalar_metric(records: list[dict], field_name: str) -> list[float]:
+            values = []
+            for record in records:
+                value = record.get(field_name)
+                if value is not None:
+                    values.append(float(value))
+            return values
+
+        valid_profit_firm1 = _collect_agent_metric(valid_records, "tail20pct_avg_profit_by_agent", agent_1)
+        valid_profit_firm2 = _collect_agent_metric(valid_records, "tail20pct_avg_profit_by_agent", agent_2)
+        valid_price_firm1 = _collect_agent_metric(valid_records, "tail20pct_avg_price_by_agent", agent_1)
+        valid_price_firm2 = _collect_agent_metric(valid_records, "tail20pct_avg_price_by_agent", agent_2)
+        valid_consumer_surplus = _collect_scalar_metric(valid_records, "consumer_surplus_last20pct")
 
         tail20pct_price_points = []
         for record in valid_records:
@@ -267,10 +283,10 @@ class CompetitiveTrajectoryCollector:
                     "traj_uid": record["traj_uid"],
                     "data_source": record["data_source"],
                     "valid": True,
-                    "tail20pct_avg_profit_by_agent": record["tail20pct_avg_profit_by_agent"],
-                    "tail20pct_avg_price_by_agent": record["tail20pct_avg_price_by_agent"],
+                    "tail20pct_avg_profit_by_agent": record.get("tail20pct_avg_profit_by_agent"),
+                    "tail20pct_avg_price_by_agent": record.get("tail20pct_avg_price_by_agent"),
                     "consumer_surplus_last20pct": record["consumer_surplus_last20pct"],
-                    "invalid_output_by_agent": record["invalid_output_by_agent"],
+                    "invalid_output_by_agent": record.get("invalid_output_by_agent", {agent_1: 0.0, agent_2: 0.0}),
                 }
             else:
                 episode_payload = {
@@ -280,7 +296,7 @@ class CompetitiveTrajectoryCollector:
                     "tail20pct_avg_profit_by_agent": None,
                     "tail20pct_avg_price_by_agent": None,
                     "consumer_surplus_last20pct": None,
-                    "invalid_output_by_agent": record["invalid_output_by_agent"],
+                    "invalid_output_by_agent": record.get("invalid_output_by_agent", {agent_1: 0.0, agent_2: 0.0}),
                 }
             episodes.append(episode_payload)
 
