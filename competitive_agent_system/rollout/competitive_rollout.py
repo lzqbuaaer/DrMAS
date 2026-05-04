@@ -169,13 +169,6 @@ class CompetitiveTrajectoryCollector:
             with open(filename, "w", encoding="utf-8") as f:
                 json.dump(payload, f, ensure_ascii=False, indent=2)
 
-        self._dump_task_eval_summary(
-            step_traces=step_traces,
-            traj_uid=traj_uid,
-            reset_infos=reset_infos,
-            terminal_infos=terminal_infos,
-        )
-
     def _build_common_step_trace(self, step_idx: int, info: dict, raw_text_by_agent: dict[str, str]) -> dict:
         return {
             "step": step_idx + 1,
@@ -375,14 +368,7 @@ class CompetitiveTrajectoryCollector:
             grouped_records.setdefault(record["data_source"], []).append(record)
         return grouped_records
 
-    def _build_task_summary_records(
-        self,
-        step_traces,
-        traj_uid,
-        reset_infos,
-        terminal_infos,
-        dump_dir: str,
-    ) -> dict[str, list[dict]]:
+    def _build_task_summary_records(self, dump_dir: str) -> dict[str, list[dict]]:
         if self._get_env_name() == "duopoly":
             return self._build_duopoly_summary_records(dump_dir=dump_dir)
         return {}
@@ -411,16 +397,10 @@ class CompetitiveTrajectoryCollector:
             return "duopoly_eval_summary.json"
         return f"{self._sanitize_path_component(env_name)}_eval_summary.json"
 
-    def _dump_task_eval_summary(self, step_traces, traj_uid, reset_infos, terminal_infos) -> None:
+    def _dump_task_eval_summary(self) -> None:
         created_at = datetime.now().isoformat(timespec="seconds")
         dump_dir = self._get_eval_dump_dir()
-        grouped_records = self._build_task_summary_records(
-            step_traces=step_traces,
-            traj_uid=traj_uid,
-            reset_infos=reset_infos,
-            terminal_infos=terminal_infos,
-            dump_dir=dump_dir,
-        )
+        grouped_records = self._build_task_summary_records(dump_dir=dump_dir)
 
         if not grouped_records:
             return
@@ -454,6 +434,9 @@ class CompetitiveTrajectoryCollector:
         summary_path = os.path.join(dump_dir, self._get_task_eval_summary_filename())
         with open(summary_path, "w", encoding="utf-8") as f:
             json.dump(overall_payload, f, ensure_ascii=False, indent=2)
+
+    def finalize_eval_artifacts(self) -> None:
+        self._dump_task_eval_summary()
 
     def _log_eval_step_progress(self, step_idx: int, infos: list[dict]) -> None:
         batch_prices = [info.get("prices_by_agent", {}) for info in infos]

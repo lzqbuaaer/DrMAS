@@ -891,6 +891,9 @@ class RayPPOTrainer:
             #         for i in range(1, len(test_batch.non_tensor_batch[k])):
             #             assert test_batch.non_tensor_batch[k][0] == test_batch.non_tensor_batch[k][i], f'not all success_rate are the same, 0: {test_batch.non_tensor_batch[k][0]}, {i}: {test_batch.non_tensor_batch[k][i]}'
 
+        if hasattr(self.traj_collector, "finalize_eval_artifacts"):
+            self.traj_collector.finalize_eval_artifacts()
+
         self._maybe_log_val_generations(inputs=sample_inputs, outputs=sample_outputs, scores=sample_scores)
 
         reward_tensor = torch.cat(reward_tensor_lst, dim=0).sum(-1).cpu()  # (batch_size,)
