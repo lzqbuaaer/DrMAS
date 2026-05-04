@@ -4,6 +4,7 @@ import json
 import os
 import uuid
 from datetime import datetime
+from pathlib import Path
 
 import numpy as np
 
@@ -322,53 +323,40 @@ class CompetitiveTrajectoryCollector:
             "tail20pct_price_points": tail20pct_price_points,
         }
 
-    def _build_duopoly_summary_records(
-        self,
-        step_traces,
-        traj_uid,
-        reset_infos,
-        terminal_infos,
-    ) -> dict[str, list[dict]]:
+    def _build_duopoly_record_from_eval_payload(self, payload: dict) -> dict | None:
+        agent_ids = self._get_agent_ids()
+        if len(agent_ids) < 2:
+            return None
+        agent_1, agent_2 = agent_ids[0], agent_ids[1]
+        data_source = str(payload.get("data_source", "unknown"))
+        invalid_output_by_agent = payload.get("invalid_output_by_agent", {})
+        valid = not any(float(invalid_output_by_agent.get(agent_id, 0.0)) > 0.0 for agent_id in (agent_1, agent_2))
+        return {
+            "traj_uid": str(payload.get("traj_uid")),
+            "data_source": data_source,
+            "valid": valid,
+            "tail20pct_window_size": payload.get("tail20pct_window_size"),
+            "tail20pct_avg_profit_by_agent": payload.get("tail20pct_avg_profit_by_agent"),
+            "tail20pct_avg_price_by_agent": payload.get("tail20pct_avg_price_by_agent"),
+            "consumer_surplus_last20pct": payload.get("consumer_surplus_last20pct"),
+            "invalid_output_by_agent": invalid_output_by_agent,
+            "p_monopoly": payload.get("p_monopoly"),
+            "p_nash": payload.get("p_nash"),
+            "steps": payload.get("steps", []),
+        }
+
+    def _build_duopoly_summary_records(self, dump_dir: str) -> dict[str, list[dict]]:
         grouped_records: dict[str, list[dict]] = {}
-        agent_1, agent_2 = self._get_agent_ids()[:2]
-        for idx, trace in enumerate(step_traces):
-            if not trace:
+        summary_filename = self._get_task_eval_summary_filename()
+        for json_path in sorted(Path(dump_dir).glob("*.json")):
+            if json_path.name == summary_filename:
                 continue
-
-            reset_info = reset_infos[idx] if idx < len(reset_infos) else {}
-            terminal_info = terminal_infos[idx] if idx < len(terminal_infos) else {}
-            data_source = str(
-                terminal_info.get("data_source")
-                or reset_info.get("data_source")
-                or trace[0].get("data_source")
-                or "unknown"
-            )
-
-            invalid_output_by_agent = {
-                agent_1: float(terminal_info.get("invalid_output/firm1", 0.0)),
-                agent_2: float(terminal_info.get("invalid_output/firm2", 0.0)),
-            }
-            grouped_records.setdefault(data_source, []).append(
-                {
-                    "traj_uid": str(traj_uid[idx]),
-                    "data_source": data_source,
-                    "valid": not any(value > 0.0 for value in invalid_output_by_agent.values()),
-                    "tail20pct_window_size": terminal_info.get("tail20pct_window_size"),
-                    "tail20pct_avg_profit_by_agent": {
-                        agent_1: terminal_info.get("tail20pct_avg_profit/firm1"),
-                        agent_2: terminal_info.get("tail20pct_avg_profit/firm2"),
-                    },
-                    "tail20pct_avg_price_by_agent": {
-                        agent_1: terminal_info.get("tail20pct_avg_price/firm1"),
-                        agent_2: terminal_info.get("tail20pct_avg_price/firm2"),
-                    },
-                    "consumer_surplus_last20pct": terminal_info.get("consumer_surplus_last20pct"),
-                    "invalid_output_by_agent": invalid_output_by_agent,
-                    "p_monopoly": terminal_info.get("p_monopoly", reset_info.get("p_monopoly")),
-                    "p_nash": terminal_info.get("p_nash", reset_info.get("p_nash")),
-                    "steps": trace,
-                }
-            )
+            with open(json_path, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+            record = self._build_duopoly_record_from_eval_payload(payload)
+            if record is None:
+                continue
+            grouped_records.setdefault(record["data_source"], []).append(record)
         return grouped_records
 
     def _build_task_summary_records(
@@ -377,14 +365,10 @@ class CompetitiveTrajectoryCollector:
         traj_uid,
         reset_infos,
         terminal_infos,
+        dump_dir: str,
     ) -> dict[str, list[dict]]:
         if self._get_env_name() == "duopoly":
-            return self._build_duopoly_summary_records(
-                step_traces=step_traces,
-                traj_uid=traj_uid,
-                reset_infos=reset_infos,
-                terminal_infos=terminal_infos,
-            )
+            return self._build_duopoly_summary_records(dump_dir=dump_dir)
         return {}
 
     def _build_task_group_summary(self, data_source: str, records: list[dict], created_at: str) -> dict | None:
@@ -413,17 +397,18 @@ class CompetitiveTrajectoryCollector:
 
     def _dump_task_eval_summary(self, step_traces, traj_uid, reset_infos, terminal_infos) -> None:
         created_at = datetime.now().isoformat(timespec="seconds")
+        dump_dir = self._get_eval_dump_dir()
         grouped_records = self._build_task_summary_records(
             step_traces=step_traces,
             traj_uid=traj_uid,
             reset_infos=reset_infos,
             terminal_infos=terminal_infos,
+            dump_dir=dump_dir,
         )
 
         if not grouped_records:
             return
 
-        dump_dir = self._get_eval_dump_dir()
         overall_payload = {
             "metadata": {
                 "experiment_name": str(self.config.trainer.experiment_name),
