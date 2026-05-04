@@ -47,6 +47,12 @@ class CompetitiveTrajectoryCollector:
     def _is_eval_only(self) -> bool:
         return bool(getattr(self.config.trainer, "val_only", False))
 
+    def _get_env_name(self) -> str:
+        return str(self.config.env.env_name).lower()
+
+    def _get_agent_ids(self) -> list[str]:
+        return list(self.config.agent.agent_ids)
+
     def _extract_terminal_infos(self, total_batch_list, total_infos) -> list[dict]:
         terminal_infos = []
         for batch_idx in range(len(total_batch_list)):
@@ -60,8 +66,7 @@ class CompetitiveTrajectoryCollector:
         return terminal_infos
 
     def _get_task_env_cfg(self):
-        env_name = str(self.config.env.env_name).lower()
-        return self.config.env.get(env_name, None)
+        return self.config.env.get(self._get_env_name(), None)
 
     def _get_task_rollout_metric_fields(self) -> list[str]:
         env_cfg = self._get_task_env_cfg()
@@ -82,7 +87,7 @@ class CompetitiveTrajectoryCollector:
         if not terminal_info:
             return resolved_payload
 
-        agent_ids = list(self.config.agent.agent_ids)
+        agent_ids = self._get_agent_ids()
         eval_dump_fields = self._get_task_eval_dump_fields()
 
         for payload_key, spec in eval_dump_fields.items():
@@ -107,30 +112,57 @@ class CompetitiveTrajectoryCollector:
 
         return resolved_payload
 
+    def _get_task_eval_trace_extra_keys(self) -> tuple[str, ...]:
+        env_name = self._get_env_name()
+        if env_name == "duopoly":
+            return ("p_monopoly", "p_nash", "ceiling")
+        if env_name == "cournot":
+            return ("monopoly_quantities", "nash_quantities", "total_units")
+        return ()
+
+    def _build_eval_trace_payload(
+        self,
+        idx: int,
+        trace: list[dict],
+        uid_batch,
+        traj_uid,
+        reset_infos,
+        terminal_infos,
+    ) -> dict:
+        reset_info = reset_infos[idx] if idx < len(reset_infos) else {}
+        terminal_info = terminal_infos[idx] if idx < len(terminal_infos) else {}
+        first_step = trace[0]
+        payload = {
+            "uid": str(uid_batch[idx]),
+            "traj_uid": str(traj_uid[idx]),
+            "data_source": first_step["data_source"],
+            "steps": trace,
+            "reset_info": reset_info,
+        }
+        for key in self._get_task_eval_trace_extra_keys():
+            if key in reset_info:
+                payload[key] = reset_info.get(key)
+            elif key in first_step:
+                payload[key] = first_step.get(key)
+
+        if terminal_info:
+            payload.update(self._resolve_eval_dump_payload(terminal_info))
+        return payload
+
     def _dump_eval_step_traces(self, step_traces, uid_batch, traj_uid, reset_infos, terminal_infos) -> None:
         dump_dir = self._get_eval_dump_dir()
         for idx, trace in enumerate(step_traces):
             if not trace:
                 continue
 
-            reset_info = reset_infos[idx] if idx < len(reset_infos) else {}
-            terminal_info = terminal_infos[idx] if idx < len(terminal_infos) else {}
-            first_step = trace[0]
-            payload = {
-                "uid": str(uid_batch[idx]),
-                "traj_uid": str(traj_uid[idx]),
-                "data_source": first_step["data_source"],
-                "steps": trace,
-                "reset_info": reset_info,
-            }
-            for key in ("p_monopoly", "p_nash", "ceiling", "monopoly_quantities", "nash_quantities", "total_units"):
-                if key in reset_info:
-                    payload[key] = reset_info.get(key)
-                elif key in first_step:
-                    payload[key] = first_step.get(key)
-
-            if terminal_info:
-                payload.update(self._resolve_eval_dump_payload(terminal_info))
+            payload = self._build_eval_trace_payload(
+                idx=idx,
+                trace=trace,
+                uid_batch=uid_batch,
+                traj_uid=traj_uid,
+                reset_infos=reset_infos,
+                terminal_infos=terminal_infos,
+            )
 
             filename = os.path.join(dump_dir, f"{traj_uid[idx]}.json")
             with open(filename, "w", encoding="utf-8") as f:
@@ -143,13 +175,55 @@ class CompetitiveTrajectoryCollector:
             terminal_infos=terminal_infos,
         )
 
+    def _build_common_step_trace(self, step_idx: int, info: dict, raw_text_by_agent: dict[str, str]) -> dict:
+        return {
+            "step": step_idx + 1,
+            "data_source": info.get("data_source"),
+            "profits_by_agent": info.get("profits_by_agent", {}),
+            "failure_reason": info.get("failure_reason"),
+            "invalid_by_agent": info.get("invalid_by_agent", {}),
+            "retry_count_by_agent": info.get("retry_count_by_agent", {}),
+            "raw_text_by_agent": raw_text_by_agent,
+        }
+
+    def _build_duopoly_step_trace(self, step_idx: int, info: dict, raw_text_by_agent: dict[str, str]) -> dict:
+        payload = self._build_common_step_trace(step_idx=step_idx, info=info, raw_text_by_agent=raw_text_by_agent)
+        payload.update(
+            {
+                "prices_by_agent": info.get("prices_by_agent", {}),
+                "p_monopoly": info.get("p_monopoly"),
+                "p_nash": info.get("p_nash"),
+            }
+        )
+        return payload
+
+    def _build_cournot_step_trace(self, step_idx: int, info: dict, raw_text_by_agent: dict[str, str]) -> dict:
+        payload = self._build_common_step_trace(step_idx=step_idx, info=info, raw_text_by_agent=raw_text_by_agent)
+        payload.update(
+            {
+                "quantities_by_agent": info.get("quantities_by_agent", {}),
+                "market_prices": info.get("market_prices", {}),
+                "monopoly_quantities": info.get("monopoly_quantities"),
+                "nash_quantities": info.get("nash_quantities"),
+            }
+        )
+        return payload
+
+    def _build_step_trace_entry(self, step_idx: int, info: dict, raw_text_by_agent: dict[str, str]) -> dict:
+        env_name = self._get_env_name()
+        if env_name == "duopoly":
+            return self._build_duopoly_step_trace(step_idx=step_idx, info=info, raw_text_by_agent=raw_text_by_agent)
+        if env_name == "cournot":
+            return self._build_cournot_step_trace(step_idx=step_idx, info=info, raw_text_by_agent=raw_text_by_agent)
+        return self._build_common_step_trace(step_idx=step_idx, info=info, raw_text_by_agent=raw_text_by_agent)
+
     def _build_duopoly_group_summary(
         self,
         data_source: str,
         records: list[dict],
         created_at: str,
     ) -> dict:
-        agent_ids = list(self.config.agent.agent_ids)
+        agent_ids = self._get_agent_ids()
         agent_1, agent_2 = agent_ids[0], agent_ids[1]
 
         valid_records = [record for record in records if record["valid"]]
@@ -248,17 +322,15 @@ class CompetitiveTrajectoryCollector:
             "tail20pct_price_points": tail20pct_price_points,
         }
 
-    def _dump_duopoly_eval_summary(
+    def _build_duopoly_summary_records(
         self,
         step_traces,
         traj_uid,
         reset_infos,
         terminal_infos,
-    ) -> None:
-        from competitive_agent_system.games.duopoly.plotting import plot_tail20pct_price_scatter
-
-        created_at = datetime.now().isoformat(timespec="seconds")
+    ) -> dict[str, list[dict]]:
         grouped_records: dict[str, list[dict]] = {}
+        agent_1, agent_2 = self._get_agent_ids()[:2]
         for idx, trace in enumerate(step_traces):
             if not trace:
                 continue
@@ -273,8 +345,8 @@ class CompetitiveTrajectoryCollector:
             )
 
             invalid_output_by_agent = {
-                self.config.agent.agent_ids[0]: float(terminal_info.get("invalid_output/firm1", 0.0)),
-                self.config.agent.agent_ids[1]: float(terminal_info.get("invalid_output/firm2", 0.0)),
+                agent_1: float(terminal_info.get("invalid_output/firm1", 0.0)),
+                agent_2: float(terminal_info.get("invalid_output/firm2", 0.0)),
             }
             grouped_records.setdefault(data_source, []).append(
                 {
@@ -283,12 +355,12 @@ class CompetitiveTrajectoryCollector:
                     "valid": not any(value > 0.0 for value in invalid_output_by_agent.values()),
                     "tail20pct_window_size": terminal_info.get("tail20pct_window_size"),
                     "tail20pct_avg_profit_by_agent": {
-                        self.config.agent.agent_ids[0]: terminal_info.get("tail20pct_avg_profit/firm1"),
-                        self.config.agent.agent_ids[1]: terminal_info.get("tail20pct_avg_profit/firm2"),
+                        agent_1: terminal_info.get("tail20pct_avg_profit/firm1"),
+                        agent_2: terminal_info.get("tail20pct_avg_profit/firm2"),
                     },
                     "tail20pct_avg_price_by_agent": {
-                        self.config.agent.agent_ids[0]: terminal_info.get("tail20pct_avg_price/firm1"),
-                        self.config.agent.agent_ids[1]: terminal_info.get("tail20pct_avg_price/firm2"),
+                        agent_1: terminal_info.get("tail20pct_avg_price/firm1"),
+                        agent_2: terminal_info.get("tail20pct_avg_price/firm2"),
                     },
                     "consumer_surplus_last20pct": terminal_info.get("consumer_surplus_last20pct"),
                     "invalid_output_by_agent": invalid_output_by_agent,
@@ -297,6 +369,56 @@ class CompetitiveTrajectoryCollector:
                     "steps": trace,
                 }
             )
+        return grouped_records
+
+    def _build_task_summary_records(
+        self,
+        step_traces,
+        traj_uid,
+        reset_infos,
+        terminal_infos,
+    ) -> dict[str, list[dict]]:
+        if self._get_env_name() == "duopoly":
+            return self._build_duopoly_summary_records(
+                step_traces=step_traces,
+                traj_uid=traj_uid,
+                reset_infos=reset_infos,
+                terminal_infos=terminal_infos,
+            )
+        return {}
+
+    def _build_task_group_summary(self, data_source: str, records: list[dict], created_at: str) -> dict | None:
+        if self._get_env_name() == "duopoly":
+            return self._build_duopoly_group_summary(
+                data_source=data_source,
+                records=records,
+                created_at=created_at,
+            )
+        return None
+
+    def _render_task_summary_artifacts(self, group_summary: dict, dump_dir: str, multiple_groups: bool) -> None:
+        if self._get_env_name() == "duopoly":
+            from competitive_agent_system.games.duopoly.plotting import plot_tail20pct_price_scatter
+
+            data_source = group_summary.get("metadata", {}).get("data_source", "unknown")
+            suffix = "" if not multiple_groups else f"__{self._sanitize_path_component(data_source)}"
+            scatter_path = os.path.join(dump_dir, f"duopoly_tail20pct_price_scatter{suffix}.png")
+            plot_tail20pct_price_scatter(group_summary, scatter_path)
+
+    def _get_task_eval_summary_filename(self) -> str:
+        env_name = self._get_env_name()
+        if env_name == "duopoly":
+            return "duopoly_eval_summary.json"
+        return f"{self._sanitize_path_component(env_name)}_eval_summary.json"
+
+    def _dump_task_eval_summary(self, step_traces, traj_uid, reset_infos, terminal_infos) -> None:
+        created_at = datetime.now().isoformat(timespec="seconds")
+        grouped_records = self._build_task_summary_records(
+            step_traces=step_traces,
+            traj_uid=traj_uid,
+            reset_infos=reset_infos,
+            terminal_infos=terminal_infos,
+        )
 
         if not grouped_records:
             return
@@ -312,32 +434,27 @@ class CompetitiveTrajectoryCollector:
             "groups": [],
         }
 
+        multiple_groups = len(grouped_records) > 1
         for data_source, records in grouped_records.items():
-            group_summary = self._build_duopoly_group_summary(
+            group_summary = self._build_task_group_summary(
                 data_source=data_source,
                 records=records,
                 created_at=created_at,
             )
+            if group_summary is None:
+                continue
             overall_payload["groups"].append(group_summary)
+            self._render_task_summary_artifacts(
+                group_summary=group_summary,
+                dump_dir=dump_dir,
+                multiple_groups=multiple_groups,
+            )
 
-            suffix = "" if len(grouped_records) == 1 else f"__{self._sanitize_path_component(data_source)}"
-            scatter_path = os.path.join(dump_dir, f"duopoly_tail20pct_price_scatter{suffix}.png")
-            plot_tail20pct_price_scatter(group_summary, scatter_path)
-
-        summary_path = os.path.join(dump_dir, "duopoly_eval_summary.json")
+        summary_path = os.path.join(dump_dir, self._get_task_eval_summary_filename())
         with open(summary_path, "w", encoding="utf-8") as f:
             json.dump(overall_payload, f, ensure_ascii=False, indent=2)
 
-    def _dump_task_eval_summary(self, step_traces, traj_uid, reset_infos, terminal_infos) -> None:
-        if str(self.config.env.env_name).lower() == "duopoly":
-            self._dump_duopoly_eval_summary(
-                step_traces=step_traces,
-                traj_uid=traj_uid,
-                reset_infos=reset_infos,
-                terminal_infos=terminal_infos,
-            )
-
-    def _log_eval_step_progress(self, step_idx: int, infos: list[dict], raw_texts_by_run: list[dict[str, str]] | None = None) -> None:
+    def _log_eval_step_progress(self, step_idx: int, infos: list[dict]) -> None:
         batch_prices = [info.get("prices_by_agent", {}) for info in infos]
         if any(prices for prices in batch_prices):
             print(f"[competitive eval] step={step_idx} batch_prices={batch_prices}")
@@ -346,7 +463,7 @@ class CompetitiveTrajectoryCollector:
             print(f"[competitive eval] step={step_idx} batch_quantities={batch_quantities}")
 
     def _get_agent_specific_episode_reward(self, terminal_info: dict, agent_id: str, fallback_reward: float) -> float:
-        agent_ids = list(self.config.agent.agent_ids)
+        agent_ids = self._get_agent_ids()
         if len(agent_ids) >= 2:
             if agent_id == agent_ids[0]:
                 return float(terminal_info.get("train_reward/firm1", fallback_reward))
@@ -401,8 +518,8 @@ class CompetitiveTrajectoryCollector:
 
         for step_idx in range(self.config.env.max_steps):
             active_masks = np.logical_not(is_done)
-            if log_eval_progress:
-                print(f"[competitive eval] step={step_idx + 1} entering_run_turn active_runs={int(np.count_nonzero(active_masks))}")
+            # if log_eval_progress:
+            #     print(f"[competitive eval] step={step_idx + 1} entering_run_turn active_runs={int(np.count_nonzero(active_masks))}")
             actions_by_agent, multiagent_batch_buffer = self.orchestra.run_turn(
                 gen_batch=gen_batch,
                 env_obs=obs,
@@ -410,11 +527,11 @@ class CompetitiveTrajectoryCollector:
                 active_masks=active_masks,
                 step=step_idx + 1,
             )
-            if log_eval_progress:
-                print(f"[competitive eval] step={step_idx + 1} finished_run_turn")
+            # if log_eval_progress:
+            #     print(f"[competitive eval] step={step_idx + 1} finished_run_turn")
             next_obs, rewards, dones, infos = envs.step(actions_by_agent)
-            if log_eval_progress:
-                print(f"[competitive eval] step={step_idx + 1} finished_env_step")
+            # if log_eval_progress:
+            #     print(f"[competitive eval] step={step_idx + 1} finished_env_step")
 
             if len(rewards.shape) == 2:
                 rewards = rewards.squeeze(1)
@@ -425,33 +542,13 @@ class CompetitiveTrajectoryCollector:
             episode_rewards[active_masks] += torch_to_numpy(rewards)[active_masks]
             episode_lengths[active_masks] += 1
 
-            raw_texts_by_run = []
             for i in range(batch_size):
                 if not active_masks[i]:
-                    raw_texts_by_run.append({agent_id: actions_by_agent[agent_id][i].raw_text for agent_id in self.config.agent.agent_ids})
                     continue
                 raw_text_by_agent = {
-                    agent_id: actions_by_agent[agent_id][i].raw_text for agent_id in self.config.agent.agent_ids
+                    agent_id: actions_by_agent[agent_id][i].raw_text for agent_id in self._get_agent_ids()
                 }
-                raw_texts_by_run.append(raw_text_by_agent)
-                step_traces[i].append(
-                    {
-                        "step": step_idx + 1,
-                        "data_source": infos[i].get("data_source"),
-                        "prices_by_agent": infos[i].get("prices_by_agent", {}),
-                        "quantities_by_agent": infos[i].get("quantities_by_agent", {}),
-                        "market_prices": infos[i].get("market_prices", {}),
-                        "profits_by_agent": infos[i].get("profits_by_agent", {}),
-                        "p_monopoly": infos[i].get("p_monopoly"),
-                        "p_nash": infos[i].get("p_nash"),
-                        "monopoly_quantities": infos[i].get("monopoly_quantities"),
-                        "nash_quantities": infos[i].get("nash_quantities"),
-                        "failure_reason": infos[i].get("failure_reason"),
-                        "invalid_by_agent": infos[i].get("invalid_by_agent", {}),
-                        "retry_count_by_agent": infos[i].get("retry_count_by_agent", {}),
-                        "raw_text_by_agent": raw_text_by_agent,
-                    }
-                )
+                step_traces[i].append(self._build_step_trace_entry(step_idx=step_idx, info=infos[i], raw_text_by_agent=raw_text_by_agent))
 
             for data in multiagent_batch_buffer:
                 agent_id, agent_batch = data["agent_id"], data["batch"]
@@ -467,7 +564,7 @@ class CompetitiveTrajectoryCollector:
                         total_infos[i].append(infos[i])
 
             if log_eval_progress:
-                self._log_eval_step_progress(step_idx=step_idx + 1, infos=infos, raw_texts_by_run=raw_texts_by_run)
+                self._log_eval_step_progress(step_idx=step_idx + 1, infos=infos)
 
             is_done = np.logical_or(is_done, dones)
             obs = next_obs
