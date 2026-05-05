@@ -382,6 +382,18 @@ env:
     marginal_cost_2b: 40.0
     rollout_metric_fields:
       - tail20pct_window_size
+      - invalid_output/firm1
+      - invalid_output/firm2
+      - tail20pct_avg_profit/firm1
+      - tail20pct_avg_profit/firm2
+      - tail20pct_avg_quantity_a/firm1
+      - tail20pct_avg_quantity_a/firm2
+      - tail20pct_avg_quantity_b/firm1
+      - tail20pct_avg_quantity_b/firm2
+      - tail20pct_avg_market_price/product_a
+      - tail20pct_avg_market_price/product_b
+      - train_reward/firm1
+      - train_reward/firm2
       - hhi_last20pct/product_a
       - hhi_last20pct/product_b
       - hhi_last20pct/mean

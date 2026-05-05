@@ -38,6 +38,8 @@ class CournotGameSpec:
         self.monopoly_quantities: dict[str, dict[str, float]] = {}
         self.nash_quantities: dict[str, dict[str, float]] = {}
         self.consumer_surplus_history: list[dict[str, float]] = []
+        self.failure_train_reward_by_agent: dict[str, float] = {}
+        self.invalid_output_by_agent: dict[str, bool] = {}
 
     def reset(self, scenario: dict[str, object]) -> None:
         self.alpha = float(scenario.get("alpha", self.config.env.cournot.alpha))
@@ -72,6 +74,8 @@ class CournotGameSpec:
         }
         self.last_market_prices = {"product_a": 0.0, "product_b": 0.0}
         self.consumer_surplus_history = []
+        self.failure_train_reward_by_agent = {agent_id: 0.0 for agent_id in self.agent_ids}
+        self.invalid_output_by_agent = {agent_id: False for agent_id in self.agent_ids}
         self.monopoly_quantities = self.solve_monopolist_quantities()
         self.nash_quantities = self.solve_cournot_nash_equilibrium()
 
@@ -111,13 +115,18 @@ class CournotGameSpec:
         for agent_id in self.agent_ids:
             self.private_states[agent_id].failed = True
 
-        rewards_by_agent = {agent_id: 0.0 for agent_id in self.agent_ids}
+        invalid_reward = -1.0 * self.alpha
+        rewards_by_agent = {
+            agent_id: (invalid_reward if not actions[agent_id].valid else 0.0) for agent_id in self.agent_ids
+        }
+        self.failure_train_reward_by_agent = dict(rewards_by_agent)
+        self.invalid_output_by_agent = {agent_id: (not actions[agent_id].valid) for agent_id in self.agent_ids}
         info = {
             "data_source": self.data_source,
             "won": False,
             "failure_reason": reason,
             "rewards_by_agent": rewards_by_agent,
-            "profits_by_agent": rewards_by_agent,
+            "profits_by_agent": {agent_id: 0.0 for agent_id in self.agent_ids},
             "quantities_by_agent": {
                 agent_id: {
                     "product_a": actions[agent_id].payload.get("quantity_a"),
@@ -132,7 +141,13 @@ class CournotGameSpec:
             "retry_count_by_agent": {agent_id: actions[agent_id].retry_count for agent_id in self.agent_ids},
             "tool_calling": 0.0,
         }
-        return CompetitiveStepResult(reward=0.0, rewards_by_agent=rewards_by_agent, done=True, won=False, info=info)
+        return CompetitiveStepResult(
+            reward=float(np.mean(list(rewards_by_agent.values()))),
+            rewards_by_agent=rewards_by_agent,
+            done=True,
+            won=False,
+            info=info,
+        )
 
     def step(self, actions: dict[str, CompetitiveAction]) -> CompetitiveStepResult:
         invalid_agents = [agent_id for agent_id, action in actions.items() if not action.valid]
@@ -276,6 +291,21 @@ class CournotGameSpec:
             return 0.0
         return float(np.mean([step_cs[key] for step_cs in self.consumer_surplus_history[-tail_window:]]))
 
+    def _mean_tail_agent_history_value(self, agent_id: str, field_name: str) -> float:
+        tail_window = self._tail_window_size()
+        history = self.private_states[agent_id].history
+        if tail_window <= 0 or not history:
+            return 0.0
+        return float(np.mean([step[field_name] for step in history[-tail_window:]]))
+
+    def _mean_tail_market_price(self, product_key: str) -> float:
+        tail_window = self._tail_window_size()
+        history = self.private_states[self.agent_ids[0]].history
+        if tail_window <= 0 or not history:
+            return 0.0
+        suffix = product_key[-1]
+        return float(np.mean([step[f"market_price_{suffix}"] for step in history[-tail_window:]]))
+
     def solve_monopolist_quantities(self) -> dict[str, dict[str, float]]:
         agent_1, agent_2 = self.agent_ids
         c1 = self.cost_by_agent[agent_1]
@@ -362,6 +392,19 @@ class CournotGameSpec:
         hhi_product_b = self._mean_tail_hhi("product_b")
         consumer_surplus_a = self._mean_tail_consumer_surplus("product_a")
         consumer_surplus_b = self._mean_tail_consumer_surplus("product_b")
+        tail_profit_firm1 = self._mean_tail_agent_history_value(agent_1, "my_profit")
+        tail_profit_firm2 = self._mean_tail_agent_history_value(agent_2, "my_profit")
+        tail_quantity_a_firm1 = self._mean_tail_agent_history_value(agent_1, "my_quantity_a")
+        tail_quantity_b_firm1 = self._mean_tail_agent_history_value(agent_1, "my_quantity_b")
+        tail_quantity_a_firm2 = self._mean_tail_agent_history_value(agent_2, "my_quantity_a")
+        tail_quantity_b_firm2 = self._mean_tail_agent_history_value(agent_2, "my_quantity_b")
+        tail_market_price_a = self._mean_tail_market_price("product_a")
+        tail_market_price_b = self._mean_tail_market_price("product_b")
+        train_reward_firm1 = tail_profit_firm1
+        train_reward_firm2 = tail_profit_firm2
+        if self.failed:
+            train_reward_firm1 = self.failure_train_reward_by_agent.get(agent_1, train_reward_firm1)
+            train_reward_firm2 = self.failure_train_reward_by_agent.get(agent_2, train_reward_firm2)
 
         metrics = {
             "cumulative_profit/firm1": self.cumulative_profit_by_agent[agent_1],
@@ -372,11 +415,23 @@ class CournotGameSpec:
             "last_market_price/product_a": self.last_market_prices["product_a"],
             "last_market_price/product_b": self.last_market_prices["product_b"],
             "tail20pct_window_size": float(self._tail_window_size()),
+            "tail20pct_avg_profit/firm1": tail_profit_firm1,
+            "tail20pct_avg_profit/firm2": tail_profit_firm2,
+            "tail20pct_avg_quantity_a/firm1": tail_quantity_a_firm1,
+            "tail20pct_avg_quantity_a/firm2": tail_quantity_a_firm2,
+            "tail20pct_avg_quantity_b/firm1": tail_quantity_b_firm1,
+            "tail20pct_avg_quantity_b/firm2": tail_quantity_b_firm2,
+            "tail20pct_avg_market_price/product_a": tail_market_price_a,
+            "tail20pct_avg_market_price/product_b": tail_market_price_b,
             "hhi_last20pct/product_a": hhi_product_a,
             "hhi_last20pct/product_b": hhi_product_b,
             "hhi_last20pct/mean": float(np.mean([hhi_product_a, hhi_product_b])),
             "consumer_surplus_last20pct/product_a": consumer_surplus_a,
             "consumer_surplus_last20pct/product_b": consumer_surplus_b,
             "consumer_surplus_last20pct/total": consumer_surplus_a + consumer_surplus_b,
+            "invalid_output/firm1": float(self.invalid_output_by_agent.get(agent_1, False)),
+            "invalid_output/firm2": float(self.invalid_output_by_agent.get(agent_2, False)),
+            "train_reward/firm1": train_reward_firm1,
+            "train_reward/firm2": train_reward_firm2,
         }
         return CompetitiveEpisodeSummary(metrics=metrics, won=not self.failed and self.round_idx == self.max_periods, reason=None if not self.failed else "invalid_output")

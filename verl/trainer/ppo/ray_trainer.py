@@ -780,6 +780,33 @@ class RayPPOTrainer:
                 )
                 metric_dict[f"val/{data_source}/{base_field}/mean"] = np.mean(mean_values)
 
+    def _add_train_rollout_metrics(self, metric_dict: dict[str, float], batch: DataProto) -> None:
+        traj_uids = batch.non_tensor_batch.get("traj_uid")
+        if traj_uids is None:
+            return
+
+        unique_traj_uid, unique_idx = np.unique(traj_uids, return_index=True)
+        if len(unique_traj_uid) == 0:
+            return
+
+        rollout_metric_fields = self._get_task_rollout_metric_fields()
+        available_fields = [field_name for field_name in rollout_metric_fields if field_name in batch.non_tensor_batch]
+
+        for field_name in available_fields:
+            values = np.asarray(batch.non_tensor_batch[field_name])[unique_idx]
+            metric_dict[f"train_rollout/{field_name}"] = float(np.mean(values))
+
+        for field_name in available_fields:
+            if not field_name.endswith("/firm1"):
+                continue
+            paired_field = field_name[:-len("/firm1")] + "/firm2"
+            if paired_field not in batch.non_tensor_batch:
+                continue
+            base_field = field_name[:-len("/firm1")]
+            values_firm1 = np.asarray(batch.non_tensor_batch[field_name])[unique_idx]
+            values_firm2 = np.asarray(batch.non_tensor_batch[paired_field])[unique_idx]
+            metric_dict[f"train_rollout/{base_field}/mean"] = float(np.mean(0.5 * (values_firm1 + values_firm2)))
+
     def _validate(self):
         reward_tensor_lst = []
         data_source_lst = []
@@ -1500,6 +1527,7 @@ class RayPPOTrainer:
                 )
                 # collect metrics
                 metrics.update(compute_data_metrics(batch=batch, unique_wg_ids=unique_wg_ids, group_n=self.config.env.rollout.n, use_critic=self.use_critic))
+                self._add_train_rollout_metrics(metric_dict=metrics, batch=batch)
                 metrics.update(compute_timing_metrics(batch=batch, timing_raw=timing_raw))
                 # TODO: implement actual tflpo and theoretical tflpo
                 n_gpus = self.resource_pool_manager.get_n_gpus()
