@@ -6,6 +6,10 @@ DATA_LOCAL_DIR="$HOME/data/drmas_cournot"
 PROMPT_PREFIX_TYPES=("P1" "P2")
 ALPHAS=("100.0")
 TOTAL_UNITS_LIST=("100.0")
+MARGINAL_COST_1A="40.0"
+MARGINAL_COST_1B="50.0"
+MARGINAL_COST_2A="50.0"
+MARGINAL_COST_2B="40.0"
 SEED_START=0
 TRAIN_SEED_COUNT=64
 TEST_SEED_COUNT=1
@@ -16,6 +20,10 @@ python3 examples/data_preprocess/drmas_cournot.py \
     --prompt_prefix_types "${PROMPT_PREFIX_TYPES[@]}" \
     --alphas "${ALPHAS[@]}" \
     --total_units_list "${TOTAL_UNITS_LIST[@]}" \
+    --marginal_cost_1a "$MARGINAL_COST_1A" \
+    --marginal_cost_1b "$MARGINAL_COST_1B" \
+    --marginal_cost_2a "$MARGINAL_COST_2A" \
+    --marginal_cost_2b "$MARGINAL_COST_2B" \
     --seed_start $SEED_START \
     --train_seed_count $TRAIN_SEED_COUNT \
     --test_seed_count $TEST_SEED_COUNT \
