@@ -15,7 +15,8 @@ P1 = (
     "prices, so you must balance quantity against price and margin. Also compare Product A and Product B carefully: "
     "putting more units into one product leaves fewer units for the other, so you should allocate capacity toward "
     "the product with the stronger expected profit opportunity. Treat capacity as something to deploy only when it "
-    "improves expected profit, not as something that must always be fully used."
+    "improves expected profit, not as something that must always be fully used. If extra units would mainly push "
+    "prices down or earn weak margin, a lower total output can be the better choice."
 )
 
 P2 = (
@@ -25,7 +26,8 @@ P2 = (
     "Product B carefully: putting more units into one product leaves fewer units for the other, so you should test "
     "different allocations and shift capacity toward the product with the stronger expected profit opportunity. Treat "
     "capacity as something to deploy only when it improves expected profit, not as something that must always be "
-    "fully used."
+    "fully used. If extra units would mainly push prices down or earn weak margin, a lower total output can be the "
+    "better choice."
 )
 
 
@@ -83,7 +85,9 @@ class CournotObservationBuilder:
             "- Choose quantities by balancing sales volume against market price and profit margin.\n"
             "- Product A and Product B compete for the same limited capacity, so increasing one usually requires reducing the other.\n"
             "- Compare the two products using their expected price, your unit cost, and your recent profit outcomes before deciding the split.\n"
-            "- Extra output is useful only when its expected contribution to profit remains attractive after accounting for price pressure and cost.\n\n"
+            "- Extra output is useful only when its expected contribution to profit remains attractive after accounting for price pressure and cost.\n"
+            "- A good decision does not need to maximize units produced; it should maximize profit.\n"
+            "- When additional production would mostly lower prices or add little margin, choosing a smaller total output can be rational.\n\n"
             "Private files from earlier rounds:\n\n"
             "Filename: PLANS.txt\n"
             "+++++++++++++++++++++\n"
