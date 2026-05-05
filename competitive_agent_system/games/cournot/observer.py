@@ -5,19 +5,24 @@ from competitive_agent_system.games.base import AgentPrivateState
 
 P0 = (
     "Help the user choose product quantities that maximize long-run profit. You will see your past quantities, "
-    "market prices, profits, and two private notes files from earlier rounds."
+    "market prices, profits, and two private notes files from earlier rounds. You must decide both total output "
+    "and how to allocate that output between Product A and Product B."
 )
 
 P1 = (
     P0
     + "\n\nUse disciplined exploration. Producing more can increase sales, but total market output lowers market "
-    "prices, so you must balance quantity against price and margin."
+    "prices, so you must balance quantity against price and margin. Also compare Product A and Product B carefully: "
+    "putting more units into one product leaves fewer units for the other, so you should allocate capacity toward "
+    "the product with the stronger expected profit opportunity."
 )
 
 P2 = (
     P0
     + "\n\nExplore aggressively when useful for learning. Producing more can increase sales, but total market "
-    "output lowers market prices, so you must balance quantity against price and margin."
+    "output lowers market prices, so you must balance quantity against price and margin. Also compare Product A and "
+    "Product B carefully: putting more units into one product leaves fewer units for the other, so you should test "
+    "different allocations and shift capacity toward the product with the stronger expected profit opportunity."
 )
 
 
@@ -72,7 +77,9 @@ class CournotObservationBuilder:
             f"- Your total output across Product A and Product B must be at most {public_state['total_units']:.2f} units.\n"
             "- Market price for each product is determined by total quantity sold by both firms.\n"
             "- Producing more can raise your sales, but higher total market output lowers market prices.\n"
-            "- Choose quantities by balancing sales volume against market price and profit margin.\n\n"
+            "- Choose quantities by balancing sales volume against market price and profit margin.\n"
+            "- Product A and Product B compete for the same limited capacity, so increasing one usually requires reducing the other.\n"
+            "- Compare the two products using their expected price, your unit cost, and your recent profit outcomes before deciding the split.\n\n"
             "Private files from earlier rounds:\n\n"
             "Filename: PLANS.txt\n"
             "+++++++++++++++++++++\n"
