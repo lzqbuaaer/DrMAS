@@ -1,0 +1,6 @@
+env:
+  sokoban:
+    dim_room: [6, 6]
+    num_boxes: 1
+    search_depth: 30
+    mode: tiny_rgb_array

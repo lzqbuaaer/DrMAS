@@ -1,0 +1,8 @@
+env:
+  env_name: alfworld/AlfredTWEnv
+  seed: 0
+  max_steps: 50
+  history_length: 2
+  rollout:
+    n: 1 # the group number of envs (for GRPO and GiGPO).
+    val_n: 1 # the group number for validation (for pass@k and avg@k). Default to 1.

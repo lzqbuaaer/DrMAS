@@ -1,0 +1,4 @@
+env:
+  webshop:
+    use_small: True
+    human_goals: False

@@ -10,6 +10,7 @@ import numpy as np
 
 from agent_system.multi_turn_rollout.utils import to_list_of_dict, torch_to_numpy
 from competitive_agent_system.orchestras import CompetitiveTurnOrchestra
+from competitive_agent_system.rollout.task_registry import create_task_handler
 from verl import DataProto
 from verl.utils.dataset.rl_dataset import collate_fn
 
@@ -20,6 +21,7 @@ class CompetitiveTrajectoryCollector:
         self.tokenizers = tokenizers
         self.processors = processors
         self.eval_dump_dir = None
+        self.agent_ids = list(config.agent.agent_ids)
 
         agents_to_wg_mapping = {}
         for wg_id, agents in wg_to_agents_mapping.items():
@@ -31,6 +33,11 @@ class CompetitiveTrajectoryCollector:
             tokenizers=tokenizers,
             processors=processors,
             agents_to_wg_mapping=agents_to_wg_mapping,
+        )
+        self.task_handler = create_task_handler(
+            config=config,
+            agent_ids=self.agent_ids,
+            sanitize_path_component=self._sanitize_path_component,
         )
 
     def _sanitize_path_component(self, value: str) -> str:
@@ -45,14 +52,11 @@ class CompetitiveTrajectoryCollector:
             os.makedirs(self.eval_dump_dir, exist_ok=True)
         return self.eval_dump_dir
 
-    def _is_eval_only(self) -> bool:
-        return bool(getattr(self.config.trainer, "val_only", False))
-
     def _get_env_name(self) -> str:
         return str(self.config.env.env_name).lower()
 
     def _get_agent_ids(self) -> list[str]:
-        return list(self.config.agent.agent_ids)
+        return list(self.agent_ids)
 
     def _extract_terminal_infos(self, total_batch_list, total_infos) -> list[dict]:
         terminal_infos = []
@@ -113,14 +117,6 @@ class CompetitiveTrajectoryCollector:
 
         return resolved_payload
 
-    def _get_task_eval_trace_extra_keys(self) -> tuple[str, ...]:
-        env_name = self._get_env_name()
-        if env_name == "duopoly":
-            return ("p_monopoly", "p_nash", "ceiling")
-        if env_name == "cournot":
-            return ("monopoly_quantities", "nash_quantities", "total_units")
-        return ()
-
     def _build_eval_trace_payload(
         self,
         idx: int,
@@ -140,7 +136,7 @@ class CompetitiveTrajectoryCollector:
             "steps": trace,
             "reset_info": reset_info,
         }
-        for key in self._get_task_eval_trace_extra_keys():
+        for key in self.task_handler.get_eval_trace_extra_keys():
             if key in reset_info:
                 payload[key] = reset_info.get(key)
             elif key in first_step:
@@ -169,521 +165,25 @@ class CompetitiveTrajectoryCollector:
             with open(filename, "w", encoding="utf-8") as f:
                 json.dump(payload, f, ensure_ascii=False, indent=2)
 
-    def _build_common_step_trace(self, step_idx: int, info: dict, raw_text_by_agent: dict[str, str]) -> dict:
-        return {
-            "step": step_idx + 1,
-            "data_source": info.get("data_source"),
-            "profits_by_agent": info.get("profits_by_agent", {}),
-            "failure_reason": info.get("failure_reason"),
-            "invalid_by_agent": info.get("invalid_by_agent", {}),
-            "retry_count_by_agent": info.get("retry_count_by_agent", {}),
-            "raw_text_by_agent": raw_text_by_agent,
-        }
-
-    def _build_duopoly_step_trace(self, step_idx: int, info: dict, raw_text_by_agent: dict[str, str]) -> dict:
-        payload = self._build_common_step_trace(step_idx=step_idx, info=info, raw_text_by_agent=raw_text_by_agent)
-        payload.update(
-            {
-                "prices_by_agent": info.get("prices_by_agent", {}),
-                "p_monopoly": info.get("p_monopoly"),
-                "p_nash": info.get("p_nash"),
-            }
-        )
-        return payload
-
-    def _build_cournot_step_trace(self, step_idx: int, info: dict, raw_text_by_agent: dict[str, str]) -> dict:
-        payload = self._build_common_step_trace(step_idx=step_idx, info=info, raw_text_by_agent=raw_text_by_agent)
-        payload.update(
-            {
-                "quantities_by_agent": info.get("quantities_by_agent", {}),
-                "market_prices": info.get("market_prices", {}),
-                "monopoly_quantities": info.get("monopoly_quantities"),
-                "nash_quantities": info.get("nash_quantities"),
-            }
-        )
-        return payload
-
-    def _build_step_trace_entry(self, step_idx: int, info: dict, raw_text_by_agent: dict[str, str]) -> dict:
-        env_name = self._get_env_name()
-        if env_name == "duopoly":
-            return self._build_duopoly_step_trace(step_idx=step_idx, info=info, raw_text_by_agent=raw_text_by_agent)
-        if env_name == "cournot":
-            return self._build_cournot_step_trace(step_idx=step_idx, info=info, raw_text_by_agent=raw_text_by_agent)
-        return self._build_common_step_trace(step_idx=step_idx, info=info, raw_text_by_agent=raw_text_by_agent)
-
-    def _build_duopoly_group_summary(
-        self,
-        data_source: str,
-        records: list[dict],
-        created_at: str,
-    ) -> dict:
-        agent_ids = self._get_agent_ids()
-        agent_1, agent_2 = agent_ids[0], agent_ids[1]
-
-        valid_records = [record for record in records if record["valid"]]
-        all_invalid_firm1 = [float(record.get("invalid_output_by_agent", {}).get(agent_1, 0.0)) for record in records]
-        all_invalid_firm2 = [float(record.get("invalid_output_by_agent", {}).get(agent_2, 0.0)) for record in records]
-
-        def _mean_or_none(values: list[float]) -> float | None:
-            if not values:
-                return None
-            return float(np.mean(values))
-
-        def _collect_agent_metric(records: list[dict], field_name: str, agent_id: str) -> list[float]:
-            values = []
-            for record in records:
-                value = record.get(field_name, {}).get(agent_id)
-                if value is not None:
-                    values.append(float(value))
-            return values
-
-        def _collect_scalar_metric(records: list[dict], field_name: str) -> list[float]:
-            values = []
-            for record in records:
-                value = record.get(field_name)
-                if value is not None:
-                    values.append(float(value))
-            return values
-
-        valid_profit_firm1 = _collect_agent_metric(valid_records, "tail20pct_avg_profit_by_agent", agent_1)
-        valid_profit_firm2 = _collect_agent_metric(valid_records, "tail20pct_avg_profit_by_agent", agent_2)
-        valid_price_firm1 = _collect_agent_metric(valid_records, "tail20pct_avg_price_by_agent", agent_1)
-        valid_price_firm2 = _collect_agent_metric(valid_records, "tail20pct_avg_price_by_agent", agent_2)
-        valid_consumer_surplus = _collect_scalar_metric(valid_records, "consumer_surplus_last20pct")
-
-        tail20pct_price_points = []
-        for record in valid_records:
-            tail_window_size = int(record["tail20pct_window_size"] or 0)
-            if tail_window_size <= 0:
-                continue
-            for step in record["steps"][-tail_window_size:]:
-                prices_by_agent = step.get("prices_by_agent", {})
-                if agent_1 not in prices_by_agent or agent_2 not in prices_by_agent:
-                    continue
-                if prices_by_agent.get(agent_1) is None or prices_by_agent.get(agent_2) is None:
-                    continue
-                tail20pct_price_points.append(
-                    {
-                        "traj_uid": record["traj_uid"],
-                        "step": step.get("step"),
-                        "firm1": float(prices_by_agent[agent_1]),
-                        "firm2": float(prices_by_agent[agent_2]),
-                    }
-                )
-
-        episodes = []
-        for record in records:
-            if record["valid"]:
-                episode_payload = {
-                    "traj_uid": record["traj_uid"],
-                    "data_source": record["data_source"],
-                    "valid": True,
-                    "tail20pct_avg_profit_by_agent": record.get("tail20pct_avg_profit_by_agent"),
-                    "tail20pct_avg_price_by_agent": record.get("tail20pct_avg_price_by_agent"),
-                    "consumer_surplus_last20pct": record["consumer_surplus_last20pct"],
-                    "invalid_output_by_agent": record.get("invalid_output_by_agent", {agent_1: 0.0, agent_2: 0.0}),
-                }
-            else:
-                episode_payload = {
-                    "traj_uid": record["traj_uid"],
-                    "data_source": record["data_source"],
-                    "valid": False,
-                    "tail20pct_avg_profit_by_agent": None,
-                    "tail20pct_avg_price_by_agent": None,
-                    "consumer_surplus_last20pct": None,
-                    "invalid_output_by_agent": record.get("invalid_output_by_agent", {agent_1: 0.0, agent_2: 0.0}),
-                }
-            episodes.append(episode_payload)
-
-        p_monopoly = next((record["p_monopoly"] for record in records if record["p_monopoly"] is not None), None)
-        p_nash = next((record["p_nash"] for record in records if record["p_nash"] is not None), None)
-
-        return {
-            "metadata": {
-                "experiment_name": str(self.config.trainer.experiment_name),
-                "env_name": str(self.config.env.env_name),
-                "created_at": created_at,
-                "data_source": data_source,
-                "episode_count_total": len(records),
-                "episode_count_valid": len(valid_records),
-                "episode_count_invalid": len(records) - len(valid_records),
-            },
-            "benchmarks": {
-                "p_monopoly": p_monopoly,
-                "p_nash": p_nash,
-            },
-            "overall": {
-                "tail20pct_avg_profit_by_agent": {
-                    agent_1: _mean_or_none(valid_profit_firm1),
-                    agent_2: _mean_or_none(valid_profit_firm2),
-                },
-                "tail20pct_avg_profit_mean": _mean_or_none(valid_profit_firm1 + valid_profit_firm2),
-                "tail20pct_avg_price_by_agent": {
-                    agent_1: _mean_or_none(valid_price_firm1),
-                    agent_2: _mean_or_none(valid_price_firm2),
-                },
-                "tail20pct_avg_price_mean": _mean_or_none(valid_price_firm1 + valid_price_firm2),
-                "consumer_surplus_last20pct": _mean_or_none(valid_consumer_surplus),
-                "invalid_output_rate_by_agent": {
-                    agent_1: _mean_or_none(all_invalid_firm1),
-                    agent_2: _mean_or_none(all_invalid_firm2),
-                },
-                "invalid_output_rate_mean": _mean_or_none(all_invalid_firm1 + all_invalid_firm2),
-            },
-            "episodes": episodes,
-            "tail20pct_price_points": tail20pct_price_points,
-        }
-
-    def _build_duopoly_record_from_eval_payload(self, payload: dict) -> dict | None:
-        agent_ids = self._get_agent_ids()
-        if len(agent_ids) < 2:
-            return None
-        agent_1, agent_2 = agent_ids[0], agent_ids[1]
-        data_source = str(payload.get("data_source", "unknown"))
-        invalid_output_by_agent = payload.get("invalid_output_by_agent", {})
-        valid = not any(float(invalid_output_by_agent.get(agent_id, 0.0)) > 0.0 for agent_id in (agent_1, agent_2))
-        return {
-            "traj_uid": str(payload.get("traj_uid")),
-            "data_source": data_source,
-            "valid": valid,
-            "tail20pct_window_size": payload.get("tail20pct_window_size"),
-            "tail20pct_avg_profit_by_agent": payload.get("tail20pct_avg_profit_by_agent"),
-            "tail20pct_avg_price_by_agent": payload.get("tail20pct_avg_price_by_agent"),
-            "consumer_surplus_last20pct": payload.get("consumer_surplus_last20pct"),
-            "invalid_output_by_agent": invalid_output_by_agent,
-            "p_monopoly": payload.get("p_monopoly"),
-            "p_nash": payload.get("p_nash"),
-            "steps": payload.get("steps", []),
-        }
-
-    def _build_cournot_record_from_eval_payload(self, payload: dict) -> dict | None:
-        agent_ids = self._get_agent_ids()
-        if len(agent_ids) < 2:
-            return None
-        agent_1, agent_2 = agent_ids[0], agent_ids[1]
-        data_source = str(payload.get("data_source", "unknown"))
-        steps = payload.get("steps", [])
-        invalid_by_agent = steps[-1].get("invalid_by_agent", {}) if steps else {}
-        invalid_output_by_agent = {
-            agent_1: float(invalid_by_agent.get(agent_1, 0.0)),
-            agent_2: float(invalid_by_agent.get(agent_2, 0.0)),
-        }
-        valid = not any(value > 0.0 for value in invalid_output_by_agent.values())
-
-        tail_window_size = int(payload.get("tail20pct_window_size") or 0)
-        tail_steps = steps[-tail_window_size:] if tail_window_size > 0 else []
-
-        def _mean_scalar(values: list[float]) -> float | None:
-            if not values:
-                return None
-            return float(np.mean(values))
-
-        def _mean_step_agent_metric(step_key: str, agent_id: str, sub_key: str | None = None) -> float | None:
-            values = []
-            for step in tail_steps:
-                step_value = step.get(step_key, {}).get(agent_id)
-                if step_value is None:
-                    continue
-                if sub_key is not None:
-                    step_value = step_value.get(sub_key)
-                if step_value is None:
-                    continue
-                values.append(float(step_value))
-            return _mean_scalar(values)
-
-        def _mean_step_market_metric(metric_key: str) -> float | None:
-            values = []
-            for step in tail_steps:
-                step_value = step.get("market_prices", {}).get(metric_key)
-                if step_value is None:
-                    continue
-                values.append(float(step_value))
-            return _mean_scalar(values)
-
-        return {
-            "traj_uid": str(payload.get("traj_uid")),
-            "data_source": data_source,
-            "valid": valid,
-            "tail20pct_window_size": payload.get("tail20pct_window_size"),
-            "tail20pct_avg_profit_by_agent": {
-                agent_1: _mean_step_agent_metric("profits_by_agent", agent_1),
-                agent_2: _mean_step_agent_metric("profits_by_agent", agent_2),
-            },
-            "tail20pct_avg_quantity_by_agent": {
-                agent_1: {
-                    "product_a": _mean_step_agent_metric("quantities_by_agent", agent_1, "product_a"),
-                    "product_b": _mean_step_agent_metric("quantities_by_agent", agent_1, "product_b"),
-                },
-                agent_2: {
-                    "product_a": _mean_step_agent_metric("quantities_by_agent", agent_2, "product_a"),
-                    "product_b": _mean_step_agent_metric("quantities_by_agent", agent_2, "product_b"),
-                },
-            },
-            "tail20pct_avg_market_price": {
-                "product_a": _mean_step_market_metric("product_a"),
-                "product_b": _mean_step_market_metric("product_b"),
-            },
-            "consumer_surplus_last20pct": payload.get("consumer_surplus_last20pct"),
-            "hhi_last20pct": payload.get("hhi_last20pct"),
-            "invalid_output_by_agent": invalid_output_by_agent,
-            "monopoly_quantities": payload.get("monopoly_quantities"),
-            "nash_quantities": payload.get("nash_quantities"),
-            "total_units": payload.get("total_units"),
-            "alpha": payload.get("reset_info", {}).get("alpha"),
-            "neg_inverse_beta": payload.get("reset_info", {}).get("neg_inverse_beta"),
-            "steps": steps,
-        }
-
-    def _build_duopoly_summary_records(self, dump_dir: str) -> dict[str, list[dict]]:
-        grouped_records: dict[str, list[dict]] = {}
-        summary_filename = self._get_task_eval_summary_filename()
-        for json_path in sorted(Path(dump_dir).glob("*.json")):
-            if json_path.name == summary_filename:
-                continue
-            with open(json_path, "r", encoding="utf-8") as f:
-                payload = json.load(f)
-            record = self._build_duopoly_record_from_eval_payload(payload)
-            if record is None:
-                continue
-            grouped_records.setdefault(record["data_source"], []).append(record)
-        return grouped_records
-
-    def _build_cournot_summary_records(self, dump_dir: str) -> dict[str, list[dict]]:
-        grouped_records: dict[str, list[dict]] = {}
-        summary_filename = self._get_task_eval_summary_filename()
-        for json_path in sorted(Path(dump_dir).glob("*.json")):
-            if json_path.name == summary_filename:
-                continue
-            with open(json_path, "r", encoding="utf-8") as f:
-                payload = json.load(f)
-            record = self._build_cournot_record_from_eval_payload(payload)
-            if record is None:
-                continue
-            grouped_records.setdefault(record["data_source"], []).append(record)
-        return grouped_records
-
-    def _build_cournot_group_summary(
-        self,
-        data_source: str,
-        records: list[dict],
-        created_at: str,
-    ) -> dict:
-        agent_1, agent_2 = self._get_agent_ids()[:2]
-        valid_records = [record for record in records if record["valid"]]
-
-        def _mean_or_none(values: list[float]) -> float | None:
-            if not values:
-                return None
-            return float(np.mean(values))
-
-        def _collect_agent_metric(records: list[dict], field_name: str, agent_id: str) -> list[float]:
-            values = []
-            for record in records:
-                value = record.get(field_name, {}).get(agent_id)
-                if value is not None:
-                    values.append(float(value))
-            return values
-
-        def _collect_agent_product_metric(records: list[dict], field_name: str, agent_id: str, product_key: str) -> list[float]:
-            values = []
-            for record in records:
-                value = record.get(field_name, {}).get(agent_id, {}).get(product_key)
-                if value is not None:
-                    values.append(float(value))
-            return values
-
-        def _collect_product_metric(records: list[dict], field_name: str, product_key: str) -> list[float]:
-            values = []
-            for record in records:
-                value = record.get(field_name, {}).get(product_key)
-                if value is not None:
-                    values.append(float(value))
-            return values
-
-        valid_profit_firm1 = _collect_agent_metric(valid_records, "tail20pct_avg_profit_by_agent", agent_1)
-        valid_profit_firm2 = _collect_agent_metric(valid_records, "tail20pct_avg_profit_by_agent", agent_2)
-        valid_qty_1a = _collect_agent_product_metric(valid_records, "tail20pct_avg_quantity_by_agent", agent_1, "product_a")
-        valid_qty_1b = _collect_agent_product_metric(valid_records, "tail20pct_avg_quantity_by_agent", agent_1, "product_b")
-        valid_qty_2a = _collect_agent_product_metric(valid_records, "tail20pct_avg_quantity_by_agent", agent_2, "product_a")
-        valid_qty_2b = _collect_agent_product_metric(valid_records, "tail20pct_avg_quantity_by_agent", agent_2, "product_b")
-        valid_price_a = _collect_product_metric(valid_records, "tail20pct_avg_market_price", "product_a")
-        valid_price_b = _collect_product_metric(valid_records, "tail20pct_avg_market_price", "product_b")
-        valid_cs_a = _collect_product_metric(valid_records, "consumer_surplus_last20pct", "product_a")
-        valid_cs_b = _collect_product_metric(valid_records, "consumer_surplus_last20pct", "product_b")
-        valid_cs_total = _collect_product_metric(valid_records, "consumer_surplus_last20pct", "total")
-        valid_hhi_a = _collect_product_metric(valid_records, "hhi_last20pct", "product_a")
-        valid_hhi_b = _collect_product_metric(valid_records, "hhi_last20pct", "product_b")
-        valid_hhi_mean = _collect_product_metric(valid_records, "hhi_last20pct", "mean")
-
-        invalid_rate_firm1 = [float(record.get("invalid_output_by_agent", {}).get(agent_1, 0.0)) for record in records]
-        invalid_rate_firm2 = [float(record.get("invalid_output_by_agent", {}).get(agent_2, 0.0)) for record in records]
-
-        tail20pct_quantity_points = []
-        for record in valid_records:
-            tail_window_size = int(record.get("tail20pct_window_size") or 0)
-            if tail_window_size <= 0:
-                continue
-            for step in record.get("steps", [])[-tail_window_size:]:
-                quantities = step.get("quantities_by_agent", {})
-                market_prices = step.get("market_prices", {})
-                q1 = quantities.get(agent_1, {})
-                q2 = quantities.get(agent_2, {})
-                if (
-                    q1.get("product_a") is None
-                    or q1.get("product_b") is None
-                    or q2.get("product_a") is None
-                    or q2.get("product_b") is None
-                ):
-                    continue
-                tail20pct_quantity_points.append(
-                    {
-                        "traj_uid": record["traj_uid"],
-                        "step": step.get("step"),
-                        "firm1_product_a": float(q1["product_a"]),
-                        "firm1_product_b": float(q1["product_b"]),
-                        "firm2_product_a": float(q2["product_a"]),
-                        "firm2_product_b": float(q2["product_b"]),
-                        "market_price_a": market_prices.get("product_a"),
-                        "market_price_b": market_prices.get("product_b"),
-                    }
-                )
-
-        episodes = []
-        for record in records:
-            if record["valid"]:
-                episode_payload = {
-                    "traj_uid": record["traj_uid"],
-                    "data_source": record["data_source"],
-                    "valid": True,
-                    "tail20pct_avg_profit_by_agent": record.get("tail20pct_avg_profit_by_agent"),
-                    "tail20pct_avg_quantity_by_agent": record.get("tail20pct_avg_quantity_by_agent"),
-                    "tail20pct_avg_market_price": record.get("tail20pct_avg_market_price"),
-                    "consumer_surplus_last20pct": record.get("consumer_surplus_last20pct"),
-                    "hhi_last20pct": record.get("hhi_last20pct"),
-                    "invalid_output_by_agent": record.get("invalid_output_by_agent", {agent_1: 0.0, agent_2: 0.0}),
-                }
-            else:
-                episode_payload = {
-                    "traj_uid": record["traj_uid"],
-                    "data_source": record["data_source"],
-                    "valid": False,
-                    "tail20pct_avg_profit_by_agent": None,
-                    "tail20pct_avg_quantity_by_agent": None,
-                    "tail20pct_avg_market_price": None,
-                    "consumer_surplus_last20pct": None,
-                    "hhi_last20pct": None,
-                    "invalid_output_by_agent": record.get("invalid_output_by_agent", {agent_1: 0.0, agent_2: 0.0}),
-                }
-            episodes.append(episode_payload)
-
-        monopoly_quantities = next((record["monopoly_quantities"] for record in records if record.get("monopoly_quantities") is not None), None)
-        nash_quantities = next((record["nash_quantities"] for record in records if record.get("nash_quantities") is not None), None)
-        total_units = next((record["total_units"] for record in records if record.get("total_units") is not None), None)
-        alpha = next((record["alpha"] for record in records if record.get("alpha") is not None), None)
-        neg_inverse_beta = next((record["neg_inverse_beta"] for record in records if record.get("neg_inverse_beta") is not None), None)
-
-        return {
-            "metadata": {
-                "experiment_name": str(self.config.trainer.experiment_name),
-                "env_name": str(self.config.env.env_name),
-                "created_at": created_at,
-                "data_source": data_source,
-                "episode_count_total": len(records),
-                "episode_count_valid": len(valid_records),
-                "episode_count_invalid": len(records) - len(valid_records),
-            },
-            "benchmarks": {
-                "monopoly_quantities": monopoly_quantities,
-                "nash_quantities": nash_quantities,
-                "total_units": total_units,
-                "alpha": alpha,
-                "neg_inverse_beta": neg_inverse_beta,
-            },
-            "overall": {
-                "tail20pct_avg_profit_by_agent": {
-                    agent_1: _mean_or_none(valid_profit_firm1),
-                    agent_2: _mean_or_none(valid_profit_firm2),
-                },
-                "tail20pct_avg_profit_mean": _mean_or_none(valid_profit_firm1 + valid_profit_firm2),
-                "tail20pct_avg_quantity_by_agent": {
-                    agent_1: {
-                        "product_a": _mean_or_none(valid_qty_1a),
-                        "product_b": _mean_or_none(valid_qty_1b),
-                    },
-                    agent_2: {
-                        "product_a": _mean_or_none(valid_qty_2a),
-                        "product_b": _mean_or_none(valid_qty_2b),
-                    },
-                },
-                "tail20pct_avg_market_price": {
-                    "product_a": _mean_or_none(valid_price_a),
-                    "product_b": _mean_or_none(valid_price_b),
-                },
-                "consumer_surplus_last20pct": {
-                    "product_a": _mean_or_none(valid_cs_a),
-                    "product_b": _mean_or_none(valid_cs_b),
-                    "total": _mean_or_none(valid_cs_total),
-                },
-                "hhi_last20pct": {
-                    "product_a": _mean_or_none(valid_hhi_a),
-                    "product_b": _mean_or_none(valid_hhi_b),
-                    "mean": _mean_or_none(valid_hhi_mean),
-                },
-                "invalid_output_rate_by_agent": {
-                    agent_1: _mean_or_none(invalid_rate_firm1),
-                    agent_2: _mean_or_none(invalid_rate_firm2),
-                },
-                "invalid_output_rate_mean": _mean_or_none(invalid_rate_firm1 + invalid_rate_firm2),
-            },
-            "episodes": episodes,
-            "tail20pct_quantity_points": tail20pct_quantity_points,
-        }
-
     def _build_task_summary_records(self, dump_dir: str) -> dict[str, list[dict]]:
-        if self._get_env_name() == "duopoly":
-            return self._build_duopoly_summary_records(dump_dir=dump_dir)
-        if self._get_env_name() == "cournot":
-            return self._build_cournot_summary_records(dump_dir=dump_dir)
-        return {}
+        return self.task_handler.build_summary_records(dump_dir=dump_dir)
 
     def _build_task_group_summary(self, data_source: str, records: list[dict], created_at: str) -> dict | None:
-        if self._get_env_name() == "duopoly":
-            return self._build_duopoly_group_summary(
-                data_source=data_source,
-                records=records,
-                created_at=created_at,
-            )
-        if self._get_env_name() == "cournot":
-            return self._build_cournot_group_summary(
-                data_source=data_source,
-                records=records,
-                created_at=created_at,
-            )
-        return None
+        return self.task_handler.build_group_summary(
+            data_source=data_source,
+            records=records,
+            created_at=created_at,
+        )
 
     def _render_task_summary_artifacts(self, group_summary: dict, dump_dir: str, multiple_groups: bool) -> None:
-        if self._get_env_name() == "duopoly":
-            from competitive_agent_system.games.duopoly.plotting import plot_tail20pct_price_scatter
-
-            data_source = group_summary.get("metadata", {}).get("data_source", "unknown")
-            suffix = "" if not multiple_groups else f"__{self._sanitize_path_component(data_source)}"
-            scatter_path = os.path.join(dump_dir, f"duopoly_tail20pct_price_scatter{suffix}.png")
-            plot_tail20pct_price_scatter(group_summary, scatter_path)
-        elif self._get_env_name() == "cournot":
-            from competitive_agent_system.games.cournot.plotting import plot_tail20pct_quantity_scatter
-
-            data_source = group_summary.get("metadata", {}).get("data_source", "unknown")
-            suffix = "" if not multiple_groups else f"__{self._sanitize_path_component(data_source)}"
-            scatter_path = os.path.join(dump_dir, f"cournot_tail20pct_quantity_scatter{suffix}.png")
-            plot_tail20pct_quantity_scatter(group_summary, scatter_path)
+        self.task_handler.render_summary_artifacts(
+            group_summary=group_summary,
+            dump_dir=dump_dir,
+            multiple_groups=multiple_groups,
+        )
 
     def _get_task_eval_summary_filename(self) -> str:
-        env_name = self._get_env_name()
-        if env_name == "duopoly":
-            return "duopoly_eval_summary.json"
-        if env_name == "cournot":
-            return "cournot_eval_summary.json"
-        return f"{self._sanitize_path_component(env_name)}_eval_summary.json"
+        return self.task_handler.get_eval_summary_filename()
 
     def _dump_task_eval_summary(self) -> None:
         created_at = datetime.now().isoformat(timespec="seconds")
@@ -725,14 +225,6 @@ class CompetitiveTrajectoryCollector:
 
     def finalize_eval_artifacts(self) -> None:
         self._dump_task_eval_summary()
-
-    def _log_eval_step_progress(self, step_idx: int, infos: list[dict]) -> None:
-        batch_prices = [info.get("prices_by_agent", {}) for info in infos]
-        if any(prices for prices in batch_prices):
-            print(f"[competitive eval] step={step_idx} batch_prices={batch_prices}")
-        else:
-            batch_quantities = [info.get("quantities_by_agent", {}) for info in infos]
-            print(f"[competitive eval] step={step_idx} batch_quantities={batch_quantities}")
 
     def _get_agent_specific_episode_reward(self, terminal_info: dict, agent_id: str, fallback_reward: float) -> float:
         agent_ids = self._get_agent_ids()
@@ -786,12 +278,9 @@ class CompetitiveTrajectoryCollector:
         episode_rewards = np.zeros(batch_size, dtype=np.float32)
         tool_callings = np.zeros(batch_size, dtype=np.float32)
         step_traces = [[] for _ in range(batch_size)]
-        log_eval_progress = dump_eval_traces and self._is_eval_only()
 
         for step_idx in range(self.config.env.max_steps):
             active_masks = np.logical_not(is_done)
-            # if log_eval_progress:
-            #     print(f"[competitive eval] step={step_idx + 1} entering_run_turn active_runs={int(np.count_nonzero(active_masks))}")
             actions_by_agent, multiagent_batch_buffer = self.orchestra.run_turn(
                 gen_batch=gen_batch,
                 env_obs=obs,
@@ -799,11 +288,7 @@ class CompetitiveTrajectoryCollector:
                 active_masks=active_masks,
                 step=step_idx + 1,
             )
-            # if log_eval_progress:
-            #     print(f"[competitive eval] step={step_idx + 1} finished_run_turn")
             next_obs, rewards, dones, infos = envs.step(actions_by_agent)
-            # if log_eval_progress:
-            #     print(f"[competitive eval] step={step_idx + 1} finished_env_step")
 
             if len(rewards.shape) == 2:
                 rewards = rewards.squeeze(1)
@@ -818,9 +303,9 @@ class CompetitiveTrajectoryCollector:
                 if not active_masks[i]:
                     continue
                 raw_text_by_agent = {
-                    agent_id: actions_by_agent[agent_id][i].raw_text for agent_id in self._get_agent_ids()
+                    agent_id: actions_by_agent[agent_id][i].raw_text for agent_id in self.agent_ids
                 }
-                step_traces[i].append(self._build_step_trace_entry(step_idx=step_idx, info=infos[i], raw_text_by_agent=raw_text_by_agent))
+                step_traces[i].append(self.task_handler.build_step_trace(step_idx=step_idx, info=infos[i], raw_text_by_agent=raw_text_by_agent))
 
             for data in multiagent_batch_buffer:
                 agent_id, agent_batch = data["agent_id"], data["batch"]
@@ -834,9 +319,6 @@ class CompetitiveTrajectoryCollector:
                     if agent_batch_list[i]["agent_active_mask"]:
                         total_batch_list[i].append(agent_batch_list[i])
                         total_infos[i].append(infos[i])
-
-            if log_eval_progress:
-                self._log_eval_step_progress(step_idx=step_idx + 1, infos=infos)
 
             is_done = np.logical_or(is_done, dones)
             obs = next_obs
