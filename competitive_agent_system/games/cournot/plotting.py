@@ -12,37 +12,38 @@ def plot_tail20pct_quantity_scatter(summary: dict, save_path: str) -> None:
     metadata = summary.get("metadata", {})
 
     firm1_a = [point["firm1_product_a"] for point in points]
-    firm2_a = [point["firm2_product_a"] for point in points]
     firm1_b = [point["firm1_product_b"] for point in points]
+    firm2_a = [point["firm2_product_a"] for point in points]
     firm2_b = [point["firm2_product_b"] for point in points]
 
     monopoly = benchmarks.get("monopoly_quantities") or {}
     nash = benchmarks.get("nash_quantities") or {}
+    total_units = benchmarks.get("total_units")
     agent_keys = list(monopoly.keys()) or list(nash.keys())
     agent_1 = agent_keys[0] if len(agent_keys) >= 1 else "Firm 1 Agent"
     agent_2 = agent_keys[1] if len(agent_keys) >= 2 else "Firm 2 Agent"
 
-    monopoly_a = (
+    monopoly_firm1 = (
         monopoly.get(agent_1, {}).get("product_a"),
-        monopoly.get(agent_2, {}).get("product_a"),
-    )
-    monopoly_b = (
         monopoly.get(agent_1, {}).get("product_b"),
+    )
+    monopoly_firm2 = (
+        monopoly.get(agent_2, {}).get("product_a"),
         monopoly.get(agent_2, {}).get("product_b"),
     )
-    nash_a = (
+    nash_firm1 = (
         nash.get(agent_1, {}).get("product_a"),
-        nash.get(agent_2, {}).get("product_a"),
-    )
-    nash_b = (
         nash.get(agent_1, {}).get("product_b"),
+    )
+    nash_firm2 = (
+        nash.get(agent_2, {}).get("product_a"),
         nash.get(agent_2, {}).get("product_b"),
     )
 
     fig, axes = plt.subplots(1, 2, figsize=(13, 6.5))
     panel_specs = [
-        (axes[0], firm1_a, firm2_a, monopoly_a, nash_a, "Product A"),
-        (axes[1], firm1_b, firm2_b, monopoly_b, nash_b, "Product B"),
+        (axes[0], firm1_a, firm1_b, monopoly_firm1, nash_firm1, agent_1),
+        (axes[1], firm2_a, firm2_b, monopoly_firm2, nash_firm2, agent_2),
     ]
 
     for ax, xs, ys, monopoly_point, nash_point, title in panel_specs:
@@ -70,6 +71,20 @@ def plot_tail20pct_quantity_scatter(summary: dict, save_path: str) -> None:
 
         ax.plot([lower, upper], [lower, upper], linestyle="--", linewidth=1.1, color="gray", label="x = y")
 
+        if total_units is not None:
+            total_units = float(total_units)
+            x0 = max(lower, 0.0)
+            x1 = min(upper, total_units)
+            if x0 <= x1:
+                ax.plot(
+                    [x0, x1],
+                    [total_units - x0, total_units - x1],
+                    linestyle=":",
+                    linewidth=1.3,
+                    color="#2ca02c",
+                    label="A + B = total_units",
+                )
+
         if nash_point[0] is not None and nash_point[1] is not None:
             ax.scatter(
                 [float(nash_point[0])],
@@ -94,14 +109,14 @@ def plot_tail20pct_quantity_scatter(summary: dict, save_path: str) -> None:
 
         ax.set_xlim(lower, upper)
         ax.set_ylim(lower, upper)
-        ax.set_xlabel("Firm 1 Quantity")
-        ax.set_ylabel("Firm 2 Quantity")
+        ax.set_xlabel("Product A Quantity")
+        ax.set_ylabel("Product B Quantity")
         ax.set_title(title)
         ax.grid(True, alpha=0.25)
         ax.legend()
 
     fig.suptitle(
-        "Cournot Tail 20% Quantity Scatter\n"
+        "Cournot Tail 20% Quantity Allocation Scatter\n"
         f"{metadata.get('data_source', 'unknown')} | valid episodes={metadata.get('episode_count_valid', 0)}"
     )
     fig.tight_layout()

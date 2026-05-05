@@ -14,7 +14,8 @@ P1 = (
     + "\n\nUse disciplined exploration. Producing more can increase sales, but total market output lowers market "
     "prices, so you must balance quantity against price and margin. Also compare Product A and Product B carefully: "
     "putting more units into one product leaves fewer units for the other, so you should allocate capacity toward "
-    "the product with the stronger expected profit opportunity."
+    "the product with the stronger expected profit opportunity. Treat capacity as something to deploy only when it "
+    "improves expected profit, not as something that must always be fully used."
 )
 
 P2 = (
@@ -22,7 +23,9 @@ P2 = (
     + "\n\nExplore aggressively when useful for learning. Producing more can increase sales, but total market "
     "output lowers market prices, so you must balance quantity against price and margin. Also compare Product A and "
     "Product B carefully: putting more units into one product leaves fewer units for the other, so you should test "
-    "different allocations and shift capacity toward the product with the stronger expected profit opportunity."
+    "different allocations and shift capacity toward the product with the stronger expected profit opportunity. Treat "
+    "capacity as something to deploy only when it improves expected profit, not as something that must always be "
+    "fully used."
 )
 
 
@@ -79,7 +82,8 @@ class CournotObservationBuilder:
             "- Producing more can raise your sales, but higher total market output lowers market prices.\n"
             "- Choose quantities by balancing sales volume against market price and profit margin.\n"
             "- Product A and Product B compete for the same limited capacity, so increasing one usually requires reducing the other.\n"
-            "- Compare the two products using their expected price, your unit cost, and your recent profit outcomes before deciding the split.\n\n"
+            "- Compare the two products using their expected price, your unit cost, and your recent profit outcomes before deciding the split.\n"
+            "- Extra output is useful only when its expected contribution to profit remains attractive after accounting for price pressure and cost.\n\n"
             "Private files from earlier rounds:\n\n"
             "Filename: PLANS.txt\n"
             "+++++++++++++++++++++\n"
