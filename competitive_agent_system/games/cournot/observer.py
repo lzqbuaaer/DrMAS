@@ -112,8 +112,8 @@ class CournotObservationBuilder:
             "<INSIGHTS>\n"
             "...\n"
             "</INSIGHTS>\n\n"
-            "<QUANTITY_A>30</QUANTITY_A>\n"
-            "<QUANTITY_B>30</QUANTITY_B>\n\n"
+            "<QUANTITY_A>number</QUANTITY_A>\n"
+            "<QUANTITY_B>number</QUANTITY_B>\n\n"
             "Anything you write in PLANS.txt and INSIGHTS.txt overwrites the previous contents, so keep any useful "
             "information you still need."
         )
