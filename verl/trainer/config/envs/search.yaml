@@ -1,3 +1,4 @@
+# @package _global_
 env:
   search:
     log_requests: false

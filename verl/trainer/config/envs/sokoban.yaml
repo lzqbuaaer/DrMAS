@@ -1,3 +1,4 @@
+# @package _global_
 env:
   sokoban:
     dim_room: [6, 6]

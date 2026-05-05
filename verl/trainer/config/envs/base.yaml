@@ -1,3 +1,4 @@
+# @package _global_
 env:
   env_name: alfworld/AlfredTWEnv
   seed: 0

@@ -1,3 +1,4 @@
+# @package _global_
 env:
   duopoly:
     alpha: 1.0
