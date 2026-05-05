@@ -260,6 +260,8 @@ class CompetitiveTrajectoryCollector:
                 prices_by_agent = step.get("prices_by_agent", {})
                 if agent_1 not in prices_by_agent or agent_2 not in prices_by_agent:
                     continue
+                if prices_by_agent.get(agent_1) is None or prices_by_agent.get(agent_2) is None:
+                    continue
                 tail20pct_price_points.append(
                     {
                         "traj_uid": record["traj_uid"],
