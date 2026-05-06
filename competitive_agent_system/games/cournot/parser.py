@@ -11,13 +11,19 @@ class CournotActionParser:
         self.max_retries = max_retries
 
     def extract_total_units_from_observation(self, text: str) -> float | None:
-        match = re.search(r"Your total output across Product A and Product B must be at most\s*([-+]?\d+(?:\.\d+)?)\s*units\.", text)
-        if match is None:
-            return None
-        value = float(match.group(1))
-        if not math.isfinite(value) or value < 0:
-            return None
-        return value
+        patterns = [
+            r"Your total output across Product A and Product B must be at most\s*([-+]?\d+(?:\.\d+)?)\s*units\.",
+            r"Producing more than\s*([-+]?\d+(?:\.\d+)?)\s*units of aggregate product will result in negative profits",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, text)
+            if match is None:
+                continue
+            value = float(match.group(1))
+            if not math.isfinite(value) or value < 0:
+                return None
+            return value
+        return None
 
     def extract_block(self, text: str, tag: str) -> str | None:
         match = re.search(rf"<{tag}>(.*?)</{tag}>", text, flags=re.DOTALL)

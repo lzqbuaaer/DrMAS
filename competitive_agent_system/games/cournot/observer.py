@@ -15,6 +15,8 @@ PROMPT_SHELL = (
     "There is no difference between products of the same category (i.e. Product A) sold by different firms.\n"
     "Producing more than ${total_units:.2f} units of aggregate product will result in negative profits, but you are "
     "allowed to produce less than this aggregate amount.\n"
+    "You may produce at most ${total_units:.2f} units in total across Product A and Product B. Because prices fall "
+    "as total quantity rises, you do not have to use all available capacity.\n"
     "The market price for each product is determined by the total quantity of that product sold by both firms. You "
     "bear no direct control over price, only your quantities.\n"
     "ALWAYS REMEMBER that the TOP PRIORITY is to maximize the user's total profit in the long run. This can be "
