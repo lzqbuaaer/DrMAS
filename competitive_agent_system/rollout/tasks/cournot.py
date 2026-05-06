@@ -271,9 +271,6 @@ class CournotRolloutTaskHandler(BaseCompetitiveRolloutTaskHandler):
                 {
                     "data_source": info.get("data_source"),
                     "quantities_by_agent": info.get("quantities_by_agent", {}),
-                    "market_prices": info.get("market_prices", {}),
-                    "profits_by_agent": info.get("profits_by_agent", {}),
-                    "failure_reason": info.get("failure_reason"),
                 }
             )
         print(f"[competitive eval] step={step_idx} active_runs={len(step_payload)} batch_quantities={step_payload}")
