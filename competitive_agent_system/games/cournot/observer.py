@@ -7,7 +7,7 @@ PROMPT_SHELL = (
     "Your task is to assist a user in allocating production resources between two products, Product A and Product B. "
     "You're competing against one other firm, and you will be provided with previous quantity and profit data from a "
     "user who is selling these products, as well as files that will help inform your allocation strategy. You will "
-    "receive market data for up to the last 15 rounds.\n"
+    "receive market data for up to the last ${market_data_length} rounds.\n"
     "Product A information:\n"
     "- The cost to produce each unit is ${cost_a:.2f}.\n"
     "Product B information:\n"
@@ -46,7 +46,7 @@ class CournotObservationBuilder:
         return PROMPT_SHELL
 
     def format_market_history(self, private_state: AgentPrivateState, window: int) -> str:
-        history = private_state.history[-min(window, 15):]
+        history = private_state.history[-window:]
         if not history:
             return "(no market history yet)"
 
@@ -74,7 +74,9 @@ class CournotObservationBuilder:
         costs = game.cost_by_agent[agent_id]
         prefix = self.build_prefix().replace("${cost_a:.2f}", f"{costs['product_a']:.2f}").replace(
             "${cost_b:.2f}", f"{costs['product_b']:.2f}"
-        ).replace("${total_units:.2f}", f"{public_state['total_units']:.2f}")
+        ).replace("${total_units:.2f}", f"{public_state['total_units']:.2f}").replace(
+            "${market_data_length}", str(public_state["market_data_length"])
+        )
         plans_text = private_state.plans_text or "(empty)"
         insights_text = private_state.insights_text or "(empty)"
         history_text = self.format_market_history(private_state, public_state["market_data_length"])
