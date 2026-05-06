@@ -240,7 +240,6 @@ class CournotMultiProcessEnv:
             "neg_inverse_beta": self.config.env.cournot.neg_inverse_beta,
             "total_units": self.config.env.cournot.total_units,
             "market_data_length": self.config.env.cournot.market_data_length,
-            "prompt_prefix_type": self.config.env.cournot.prompt_prefix_type,
             "seed": 0,
             "data_source": "cournot_dummy",
         }
