@@ -3,30 +3,38 @@ from __future__ import annotations
 from competitive_agent_system.games.base import AgentPrivateState
 
 
-P0 = (
-    "Help the user choose product quantities that maximize long-run profit. You will see your past quantities, "
-    "market prices, profits, and two private notes files from earlier rounds. You must decide both total output "
-    "and how to allocate that output between Product A and Product B."
-)
-
-P1 = (
-    P0
-    + "\n\nUse disciplined exploration. Producing more can increase sales, but total market output lowers market "
-    "prices, so you must balance quantity against price and margin. Also compare Product A and Product B carefully: "
-    "putting more units into one product leaves fewer units for the other, so you should allocate capacity toward "
-    "the product with the stronger expected profit opportunity. Do not assume the best choice is to use the maximum "
-    "possible output. Higher output lowers market prices, so a smaller total quantity can earn higher profit when "
-    "extra units add little margin."
-)
-
-P2 = (
-    P0
-    + "\n\nExplore aggressively when useful for learning. Producing more can increase sales, but total market "
-    "output lowers market prices, so you must balance quantity against price and margin. Also compare Product A and "
-    "Product B carefully: putting more units into one product leaves fewer units for the other, so you should test "
-    "different allocations and shift capacity toward the product with the stronger expected profit opportunity. Do "
-    "not assume the best choice is to use the maximum possible output. Higher output lowers market prices, so a "
-    "smaller total quantity can earn higher profit when extra units add little margin."
+PROMPT_SHELL = (
+    "Your task is to assist a user in allocating production resources between two products, Product A and Product B. "
+    "You're competing against one other firm, and you will be provided with previous quantity and profit data from a "
+    "user who is selling these products, as well as files that will help inform your allocation strategy. You will "
+    "receive market data for up to the last 15 rounds.\n"
+    "Product A information:\n"
+    "- The cost to produce each unit is ${cost_a:.2f}.\n"
+    "Product B information:\n"
+    "- The cost to produce each unit is ${cost_b:.2f}.\n"
+    "There is no difference between products of the same category (i.e. Product A) sold by different firms.\n"
+    "Producing more than ${total_units:.2f} units of aggregate product will result in negative profits, but you are "
+    "allowed to produce less than this aggregate amount.\n"
+    "The market price for each product is determined by the total quantity of that product sold by both firms. You "
+    "bear no direct control over price, only your quantities.\n"
+    "ALWAYS REMEMBER that the TOP PRIORITY is to maximize the user's total profit in the long run. This can be "
+    "accomplished by maximizing per round profits. To do this, you should explore many different allocation "
+    "strategies (distribution between products and total quantity), keeping in mind your primary goal of maximizing "
+    "profit. Consider following your previous insights if they ended up holding true and seem reasonable.\n"
+    "In some cases, producing a very low quantity - or even none - of a particular product may be justified if this "
+    "yields more profit, especially when marginal costs are high.\n"
+    "Because market conditions are constantly changing, the same quantity might earn different profits on different "
+    "days. Follow market trends if you keep making more profit.\n"
+    "Strongly consider trying strategy perturbations, by units of 15 to 20 or so for a particular product in both "
+    "directions, after settling on a strategy to see if you can yield more profit under new market conditions. "
+    "Perturbations should get smaller as your confidence in a strategy increases.\n"
+    "Now let me tell you about the resources you have to help me with allocation. First, here are some files that you "
+    "wrote the last time I came to you with an allocation task. Here is a high-level description of what these files "
+    "contain:\n"
+    "- PLANS.txt: File where you can write your plans for what strategies to test/use during the next few rounds.\n"
+    "- INSIGHTS.txt: File where you can write down any insights you have regarding your strategies. Be detailed and "
+    "precise but keep things succinct and don't repeat yourself.\n"
+    "Now I will show you the current content of these files."
 )
 
 
@@ -34,15 +42,11 @@ class CournotObservationBuilder:
     def __init__(self, agent_ids: list[str]):
         self.agent_ids = agent_ids
 
-    def build_prefix(self, prompt_prefix_type: str) -> str:
-        if prompt_prefix_type == "P1":
-            return P1
-        if prompt_prefix_type == "P2":
-            return P2
-        raise ValueError(f"Unsupported prompt_prefix_type: {prompt_prefix_type}")
+    def build_prefix(self) -> str:
+        return PROMPT_SHELL
 
     def format_market_history(self, private_state: AgentPrivateState, window: int) -> str:
-        history = private_state.history[-window:]
+        history = private_state.history[-min(window, 15):]
         if not history:
             return "(no market history yet)"
 
@@ -67,26 +71,16 @@ class CournotObservationBuilder:
     def build_observation(self, agent_id: str, game) -> str:
         private_state = game.private_states[agent_id]
         public_state = game.build_public_state()
-        prefix = self.build_prefix(game.prompt_prefix_type)
         costs = game.cost_by_agent[agent_id]
+        prefix = self.build_prefix().replace("${cost_a:.2f}", f"{costs['product_a']:.2f}").replace(
+            "${cost_b:.2f}", f"{costs['product_b']:.2f}"
+        ).replace("${total_units:.2f}", f"{public_state['total_units']:.2f}")
         plans_text = private_state.plans_text or "(empty)"
         insights_text = private_state.insights_text or "(empty)"
         history_text = self.format_market_history(private_state, public_state["market_data_length"])
 
         return (
             f"{prefix}\n\n"
-            "Product information:\n"
-            f"- The cost to produce each unit of Product A is {costs['product_a']:.2f}.\n"
-            f"- The cost to produce each unit of Product B is {costs['product_b']:.2f}.\n"
-            f"- Your total output across Product A and Product B must be at most {public_state['total_units']:.2f} units.\n"
-            "- Market price for each product is determined by total quantity sold by both firms.\n"
-            "- Producing more can raise your sales, but higher total market output lowers market prices.\n"
-            "- Choose quantities by balancing sales volume against market price and profit margin.\n"
-            "- Product A and Product B compete for the same limited capacity, so increasing one usually requires reducing the other.\n"
-            "- Compare the two products using their expected price, your unit cost, and your recent profit outcomes before deciding the split.\n"
-            "- Do not assume that using the full production limit is best.\n"
-            "- Because higher total output lowers prices, producing less can be more profitable when extra units mainly reduce price or add little margin.\n\n"
-            "Private files from earlier rounds:\n\n"
             "Filename: PLANS.txt\n"
             "+++++++++++++++++++++\n"
             f"{plans_text}\n"
@@ -95,27 +89,28 @@ class CournotObservationBuilder:
             "+++++++++++++++++++++\n"
             f"{insights_text}\n"
             "+++++++++++++++++++++\n\n"
-            "Market data you can observe:\n\n"
+            "Finally I will show you the market data you have access to.\n\n"
             "Filename: MARKET DATA (read-only)\n"
             "+++++++++++++++++++++\n"
             f"{history_text}\n"
             "+++++++++++++++++++++\n\n"
-            "Respond using exactly these five XML-style tags and nothing outside them:\n"
-            "<OBSERVATIONS>, <PLANS>, <INSIGHTS>, <QUANTITY_A>, <QUANTITY_B>.\n"
-            "Do not use markdown headings.\n"
-            "Inside <QUANTITY_A> and <QUANTITY_B>, write only plain non-negative numbers.\n\n"
-            "Required response template:\n\n"
+            "Now you have all the necessary information to complete the task.\n"
+            "First, carefully read through the information provided, following your previous insights if they are "
+            "reasonable. Then, fill in the below response template to respond. YOU MUST respond in this exact XML "
+            "format.\n"
+            "Remember, your TOP PRIORITY is to maximize the user's total profit in the long run.\n\n"
             "<OBSERVATIONS>\n"
-            "...\n"
+            "<fill in here>\n"
             "</OBSERVATIONS>\n\n"
             "<PLANS>\n"
-            "...\n"
+            "<fill in here>\n"
             "</PLANS>\n\n"
             "<INSIGHTS>\n"
-            "...\n"
+            "<fill in here>\n"
             "</INSIGHTS>\n\n"
-            "<QUANTITY_A>number</QUANTITY_A>\n"
-            "<QUANTITY_B>number</QUANTITY_B>\n\n"
+            "<QUANTITY_A><just the number, nothing else.></QUANTITY_A>\n"
+            "<QUANTITY_B><just the number, nothing else.></QUANTITY_B>\n\n"
+            "Inside <QUANTITY_A> and <QUANTITY_B>, write only plain non-negative numbers.\n"
             "Anything you write in PLANS.txt and INSIGHTS.txt overwrites the previous contents, so keep any useful "
             "information you still need."
         )

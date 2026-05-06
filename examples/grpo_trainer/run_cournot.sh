@@ -3,7 +3,6 @@ set -x
 MODE=${1:-eval}
 
 DATA_LOCAL_DIR="$HOME/data/drmas_cournot"
-PROMPT_PREFIX_TYPES=("P1" "P2")
 ALPHAS=("100.0")
 TOTAL_UNITS_LIST=("100.0")
 MARGINAL_COST_1A="40.0"
@@ -17,7 +16,6 @@ TEST_SAMPLED_SEED_COUNT=4
 
 python3 examples/data_preprocess/drmas_cournot.py \
     --local_dir "$DATA_LOCAL_DIR" \
-    --prompt_prefix_types "${PROMPT_PREFIX_TYPES[@]}" \
     --alphas "${ALPHAS[@]}" \
     --total_units_list "${TOTAL_UNITS_LIST[@]}" \
     --marginal_cost_1a "$MARGINAL_COST_1A" \
@@ -102,7 +100,6 @@ python3 -m verl.trainer.main_ppo \
     env.max_steps=20 \
     env.rollout.n=$group_size \
     env.rollout.val_n=$val_group_size \
-    env.cournot.prompt_prefix_type=P1 \
     env.cournot.market_data_length=30 \
     env.cournot.total_units=100 \
     env.cournot.max_parse_retry=10 \

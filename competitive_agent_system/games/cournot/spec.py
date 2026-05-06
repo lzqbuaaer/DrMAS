@@ -20,7 +20,6 @@ class CournotGameSpec:
         self.round_idx = 0
         self.max_periods = 0
         self.market_data_length = 30
-        self.prompt_prefix_type = "P1"
         self.data_source = "cournot"
         self.seed = 0
         self.failed = False
@@ -46,9 +45,13 @@ class CournotGameSpec:
         self.neg_inverse_beta = float(scenario.get("neg_inverse_beta", self.config.env.cournot.neg_inverse_beta))
         self.total_units = float(scenario.get("total_units", self.config.env.cournot.total_units))
         self.market_data_length = int(scenario.get("market_data_length", self.config.env.cournot.market_data_length))
-        self.prompt_prefix_type = str(scenario.get("prompt_prefix_type", self.config.env.cournot.prompt_prefix_type))
         self.max_periods = int(scenario.get("periods", self.config.env.max_steps))
-        self.data_source = str(scenario.get("data_source", f"cournot_alpha_{str(self.alpha).replace('.', '_')}_{self.prompt_prefix_type.lower()}"))
+        self.data_source = str(
+            scenario.get(
+                "data_source",
+                f"cournot_alpha_{str(self.alpha).replace('.', '_')}_units_{str(self.total_units).replace('.', '_')}",
+            )
+        )
         self.seed = int(scenario.get("seed", self.config.env.seed))
         self.flex_total_prod = bool(scenario.get("flex_total_prod", self.config.env.cournot.flex_total_prod))
 

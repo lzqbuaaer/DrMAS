@@ -7,7 +7,6 @@ import pandas as pd
 def build_rows(
     split: str,
     seeds: range,
-    prompt_prefix_types: list[str],
     alphas: list[float],
     total_units_list: list[float],
     marginal_cost_1a: float,
@@ -21,47 +20,43 @@ def build_rows(
     for alpha in alphas:
         neg_inverse_beta = -1.0 / 2.0
         for total_units in total_units_list:
-            for prompt_prefix_type in prompt_prefix_types:
-                for seed in seeds:
-                    data_source = (
-                        f"cournot_alpha_{str(alpha).replace('.', '_')}_"
-                        f"units_{str(total_units).replace('.', '_')}_"
-                        f"{prompt_prefix_type.lower()}"
-                    )
-                    rows.append(
-                        {
+            for seed in seeds:
+                data_source = (
+                    f"cournot_alpha_{str(alpha).replace('.', '_')}_"
+                    f"units_{str(total_units).replace('.', '_')}"
+                )
+                rows.append(
+                    {
+                        "data_source": data_source,
+                        "prompt": [
+                            {"role": "system", "content": "You are a helpful and harmless assistant."},
+                            {"role": "user", "content": "Begin the task."},
+                        ],
+                        "ability": "competitive_allocation",
+                        "reward_model": {"style": "rule"},
+                        "extra_info": {"split": split, "index": index},
+                        "env_kwargs": {
+                            "alpha": alpha,
+                            "neg_inverse_beta": neg_inverse_beta,
+                            "total_units": total_units,
+                            "market_data_length": market_data_length,
+                            "marginal_cost_1a": marginal_cost_1a,
+                            "marginal_cost_1b": marginal_cost_1b,
+                            "marginal_cost_2a": marginal_cost_2a,
+                            "marginal_cost_2b": marginal_cost_2b,
+                            "periods": 50,
+                            "seed": int(seed),
                             "data_source": data_source,
-                            "prompt": [
-                                {"role": "system", "content": "You are a helpful and harmless assistant."},
-                                {"role": "user", "content": "Begin the task."},
-                            ],
-                            "ability": "competitive_allocation",
-                            "reward_model": {"style": "rule"},
-                            "extra_info": {"split": split, "index": index},
-                            "env_kwargs": {
-                                "alpha": alpha,
-                                "neg_inverse_beta": neg_inverse_beta,
-                                "total_units": total_units,
-                                "market_data_length": market_data_length,
-                                "prompt_prefix_type": prompt_prefix_type,
-                                "marginal_cost_1a": marginal_cost_1a,
-                                "marginal_cost_1b": marginal_cost_1b,
-                                "marginal_cost_2a": marginal_cost_2a,
-                                "marginal_cost_2b": marginal_cost_2b,
-                                "periods": 50,
-                                "seed": int(seed),
-                                "data_source": data_source,
-                            },
-                        }
-                    )
-                    index += 1
+                        },
+                    }
+                )
+                index += 1
     return rows
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--local_dir", default="~/data/drmas_cournot")
-    parser.add_argument("--prompt_prefix_types", nargs="+", default=["P1", "P2"])
     parser.add_argument("--alphas", nargs="+", type=float, default=[100.0])
     parser.add_argument("--total_units_list", nargs="+", type=float, default=[100.0])
     parser.add_argument("--marginal_cost_1a", type=float, default=40.0)
@@ -86,7 +81,6 @@ if __name__ == "__main__":
         build_rows(
             "train",
             train_seeds,
-            args.prompt_prefix_types,
             args.alphas,
             args.total_units_list,
             args.marginal_cost_1a,
@@ -100,7 +94,6 @@ if __name__ == "__main__":
         build_rows(
             "test",
             test_seeds,
-            args.prompt_prefix_types,
             args.alphas,
             args.total_units_list,
             args.marginal_cost_1a,
@@ -114,7 +107,6 @@ if __name__ == "__main__":
         build_rows(
             "test",
             test_sampled_seeds,
-            args.prompt_prefix_types,
             args.alphas,
             args.total_units_list,
             args.marginal_cost_1a,
