@@ -53,6 +53,9 @@ class BaseCompetitiveRolloutTaskHandler:
     def render_summary_artifacts(self, group_summary: dict, dump_dir: str, multiple_groups: bool) -> None:
         return None
 
+    def log_eval_step(self, step_idx: int, infos: list[dict], active_masks) -> None:
+        return None
+
     def mean_or_none(self, values: list[float]) -> float | None:
         if not values:
             return None

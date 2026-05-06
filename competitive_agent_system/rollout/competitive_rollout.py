@@ -223,6 +223,9 @@ class CompetitiveTrajectoryCollector:
         with open(summary_path, "w", encoding="utf-8") as f:
             json.dump(overall_payload, f, ensure_ascii=False, indent=2)
 
+    def _should_log_eval_step_outputs(self, dump_eval_traces: bool) -> bool:
+        return dump_eval_traces and bool(getattr(self.config.trainer, "val_only", False))
+
     def finalize_eval_artifacts(self) -> None:
         self._dump_task_eval_summary()
 
@@ -278,6 +281,7 @@ class CompetitiveTrajectoryCollector:
         episode_rewards = np.zeros(batch_size, dtype=np.float32)
         tool_callings = np.zeros(batch_size, dtype=np.float32)
         step_traces = [[] for _ in range(batch_size)]
+        log_eval_step_outputs = self._should_log_eval_step_outputs(dump_eval_traces)
 
         for step_idx in range(self.config.env.max_steps):
             active_masks = np.logical_not(is_done)
@@ -289,6 +293,8 @@ class CompetitiveTrajectoryCollector:
                 step=step_idx + 1,
             )
             next_obs, rewards, dones, infos = envs.step(actions_by_agent)
+            if log_eval_step_outputs:
+                self.task_handler.log_eval_step(step_idx=step_idx + 1, infos=infos, active_masks=active_masks)
 
             if len(rewards.shape) == 2:
                 rewards = rewards.squeeze(1)

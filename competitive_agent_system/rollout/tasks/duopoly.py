@@ -154,3 +154,18 @@ class DuopolyRolloutTaskHandler(BaseCompetitiveRolloutTaskHandler):
         suffix = "" if not multiple_groups else f"__{self.sanitize_path_component(data_source)}"
         scatter_path = os.path.join(dump_dir, f"duopoly_tail20pct_price_scatter{suffix}.png")
         plot_tail20pct_price_scatter(group_summary, scatter_path)
+
+    def log_eval_step(self, step_idx: int, infos: list[dict], active_masks) -> None:
+        step_payload = []
+        for idx, info in enumerate(infos):
+            if not active_masks[idx]:
+                continue
+            step_payload.append(
+                {
+                    "data_source": info.get("data_source"),
+                    "prices_by_agent": info.get("prices_by_agent", {}),
+                    "profits_by_agent": info.get("profits_by_agent", {}),
+                    "failure_reason": info.get("failure_reason"),
+                }
+            )
+        print(f"[competitive eval] step={step_idx} active_runs={len(step_payload)} batch_prices={step_payload}")
