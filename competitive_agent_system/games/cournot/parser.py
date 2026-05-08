@@ -46,12 +46,14 @@ class CournotActionParser:
         insights_text = self.extract_block(text, "INSIGHTS")
         quantity_a = self.extract_scalar(text, "QUANTITY_A")
         quantity_b = self.extract_scalar(text, "QUANTITY_B")
+        total_quantity = quantity_a + quantity_b if quantity_a is not None and quantity_b is not None else None
 
         total_exceeds_capacity = (
             quantity_a is not None
             and quantity_b is not None
             and total_units is not None
-            and (quantity_a + quantity_b) > total_units
+            and total_quantity is not None
+            and total_quantity > total_units
         )
 
         valid = (
@@ -65,7 +67,10 @@ class CournotActionParser:
         if valid:
             error = None
         elif total_exceeds_capacity:
-            error = f"total quantity exceeds capacity {total_units}"
+            error = (
+                "total quantity exceeds capacity: "
+                f"QUANTITY_A + QUANTITY_B = {total_quantity:.2f} > {total_units:.2f} "
+            )
         else:
             error = "missing required tags or invalid quantities"
 

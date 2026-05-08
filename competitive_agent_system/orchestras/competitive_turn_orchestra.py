@@ -62,18 +62,43 @@ class CompetitiveTurnOrchestra:
         for idx, row in enumerate(row_list):
             row["is_action_valid"] = saved_actions[idx].valid
 
+    def _build_retry_feedback(self, agent_id: str, parsed_action, parse_kwargs: dict) -> str:
+        env_name = str(self.config.env.env_name).lower()
+        feedback_lines = [
+            "RETRY FEEDBACK:",
+            f"Your previous answer for {agent_id} was invalid.",
+            parsed_action.error or "Your previous answer was invalid.",
+        ]
+
+        if "cournot" in env_name:
+            total_units = parse_kwargs.get("total_units")
+            if total_units is not None:
+                feedback_lines.extend(
+                    [
+                        f"Resubmit with QUANTITY_A + QUANTITY_B <= {float(total_units):.2f}.",
+                        "Choose a feasible total output first, then split it between Product A and Product B.",
+                    ]
+                )
+        elif "duopoly" in env_name:
+            max_price = parse_kwargs.get("max_price")
+            if max_price is not None:
+                feedback_lines.append(f"Resubmit with PRICE <= {float(max_price):.2f}.")
+
+        return "\n".join(feedback_lines)
+
     def _call_single_agent(self, agent_id: str, gen_batch: DataProto, obs_texts: list[str], actor_rollout_wg, active_masks: np.ndarray, step: int):
         attempts = np.zeros(len(obs_texts), dtype=np.int32)
         remaining = active_masks.copy()
         saved_rows = None
         parse_kwargs = self._build_parse_kwargs(obs_texts)
         saved_actions = [self.parser.parse("", **parse_kwargs[idx]) for idx in range(len(obs_texts))]
+        retry_obs_texts = list(obs_texts)
         debug_eval = self._should_log_eval_debug()
 
         while remaining.any() and np.any(attempts[remaining] < self.parser.max_retries):
             batch, text_responses = self.agents[agent_id].call(
                 gen_batch=gen_batch,
-                obs_texts=obs_texts,
+                obs_texts=retry_obs_texts,
                 actor_rollout_wg=actor_rollout_wg,
                 agent_active_mask=remaining,
                 step=step,
@@ -96,6 +121,16 @@ class CompetitiveTurnOrchestra:
                 saved_rows[idx] = row_list[idx]
                 saved_actions[idx] = parsed
                 next_remaining[idx] = (not parsed.valid) and (attempts[idx] < self.parser.max_retries)
+                if next_remaining[idx]:
+                    retry_obs_texts[idx] = (
+                        obs_texts[idx]
+                        + "\n\n"
+                        + self._build_retry_feedback(
+                            agent_id=agent_id,
+                            parsed_action=parsed,
+                            parse_kwargs=parse_kwargs[idx],
+                        )
+                    )
 
             if debug_eval:
                 remaining_count = int(np.count_nonzero(next_remaining))
