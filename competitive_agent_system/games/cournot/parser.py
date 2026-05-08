@@ -14,6 +14,7 @@ class CournotActionParser:
         patterns = [
             r"Your total output across Product A and Product B must be at most\s*([-+]?\d+(?:\.\d+)?)\s*units\.",
             r"Producing more than\s*([-+]?\d+(?:\.\d+)?)\s*units of aggregate product will result in negative profits",
+            r"Product_A\s*\+\s*Product_B\s*<=\s*([-+]?\d+(?:\.\d+)?)",
         ]
         for pattern in patterns:
             match = re.search(pattern, text)
