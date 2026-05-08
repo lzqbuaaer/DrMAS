@@ -61,6 +61,7 @@ class CompetitiveTurnOrchestra:
     def _populate_row_defaults(self, row_list: list[dict], saved_actions: list) -> None:
         for idx, row in enumerate(row_list):
             row["is_action_valid"] = saved_actions[idx].valid
+            row["invalid_action_reason"] = saved_actions[idx].error or ""
 
     def _build_retry_feedback(self, agent_id: str, parsed_action, parse_kwargs: dict) -> str:
         env_name = str(self.config.env.env_name).lower()
@@ -118,6 +119,7 @@ class CompetitiveTurnOrchestra:
                 parsed.retry_count = int(attempts[idx])
 
                 row_list[idx]["is_action_valid"] = parsed.valid
+                row_list[idx]["invalid_action_reason"] = parsed.error or ""
                 saved_rows[idx] = row_list[idx]
                 saved_actions[idx] = parsed
                 next_remaining[idx] = (not parsed.valid) and (attempts[idx] < self.parser.max_retries)
@@ -148,6 +150,7 @@ class CompetitiveTurnOrchestra:
 
         final_batch = DataProto.from_single_dict(collate_fn(saved_rows))
         final_batch.non_tensor_batch["is_action_valid"] = np.array([action.valid for action in saved_actions], dtype=bool)
+        final_batch.non_tensor_batch["invalid_action_reason"] = np.array([action.error or "" for action in saved_actions], dtype=object)
         final_batch.non_tensor_batch["env_step"] = np.array([step] * len(saved_actions), dtype=object)
         return final_batch, saved_actions
 

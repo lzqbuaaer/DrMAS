@@ -66,6 +66,7 @@ from verl.workers.rollout.async_server import AsyncLLMServerManager
 
 from agent_system.multi_turn_rollout import TrajectoryCollector, adjust_batch, split_batch_by_wg_ids, combine_batches
 from agent_system.agent.utils import build_wg_ids, normalize_agent_id, normalize_model_id
+from competitive_agent_system.games.train_metrics import compute_task_train_metrics
 
 WorkerType = Type[Worker]
 
@@ -1528,6 +1529,7 @@ class RayPPOTrainer:
                 # collect metrics
                 metrics.update(compute_data_metrics(batch=batch, unique_wg_ids=unique_wg_ids, group_n=self.config.env.rollout.n, use_critic=self.use_critic))
                 self._add_train_rollout_metrics(metric_dict=metrics, batch=batch)
+                metrics.update(compute_task_train_metrics(env_name=self.config.env.env_name, batch=batch))
                 metrics.update(compute_timing_metrics(batch=batch, timing_raw=timing_raw))
                 # TODO: implement actual tflpo and theoretical tflpo
                 n_gpus = self.resource_pool_manager.get_n_gpus()

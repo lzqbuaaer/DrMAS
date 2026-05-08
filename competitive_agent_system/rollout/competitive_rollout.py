@@ -323,6 +323,7 @@ class CompetitiveTrajectoryCollector:
                 agent_batch_list = to_list_of_dict(agent_batch)
                 for i in range(batch_size):
                     if agent_batch_list[i]["agent_active_mask"]:
+                        agent_batch_list[i]["episode_failure_reason"] = infos[i].get("failure_reason", "")
                         total_batch_list[i].append(agent_batch_list[i])
                         total_infos[i].append(infos[i])
 

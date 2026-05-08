@@ -6,6 +6,31 @@ import re
 from competitive_agent_system.games.base import CompetitiveAction
 
 
+def canonicalize_cournot_invalid_reason(reason: object) -> str | None:
+    if reason is None:
+        return None
+
+    text = str(reason).strip()
+    if not text:
+        return None
+
+    lowered = text.lower()
+    canonical_map = [
+        ("total quantity exceeds capacity", "capacity_exceeded"),
+        ("missing required tags or invalid quantities", "missing_tags_or_invalid_quantities"),
+        ("capacity exceeded by firm 1 agent", "capacity_exceeded_firm1"),
+        ("capacity exceeded by firm 2 agent", "capacity_exceeded_firm2"),
+        ("invalid output", "invalid_output"),
+    ]
+    for pattern, label in canonical_map:
+        if pattern in lowered:
+            return label
+
+    sanitized = "".join(char if char.isalnum() else "_" for char in lowered)
+    sanitized = "_".join(part for part in sanitized.split("_") if part)
+    return sanitized[:80] or "unknown"
+
+
 class CournotActionParser:
     def __init__(self, max_retries: int = 10):
         self.max_retries = max_retries
