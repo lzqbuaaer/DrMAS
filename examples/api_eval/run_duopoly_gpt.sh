@@ -17,8 +17,6 @@ THINKING_ENABLED=false
 RETRIES=3
 EPISODE_COUNT="$TEST_SEED_COUNT"
 MAX_STEPS=20
-TEMPERATURE=0.6
-MAX_TOKENS=1024
 EXPERIMENT_NAME="competitive_duopoly_gpt_api_eval"
 DATA_FILE="$DATA_LOCAL_DIR/test.parquet"
 
@@ -48,8 +46,6 @@ python3 examples/api_eval/main_api_eval.py \
   --data-file "$DATA_FILE" \
   --episode-count "$EPISODE_COUNT" \
   --max-steps "$MAX_STEPS" \
-  --temperature "$TEMPERATURE" \
-  --max-tokens "$MAX_TOKENS" \
   --duopoly-beta "$BETA" \
   --duopoly-prompt-prefix-type "${PROMPT_PREFIX_TYPES[0]}" \
   --experiment-name "$EXPERIMENT_NAME"

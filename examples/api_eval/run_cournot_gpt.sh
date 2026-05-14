@@ -22,8 +22,6 @@ THINKING_ENABLED=false
 RETRIES=3
 EPISODE_COUNT=20
 MAX_STEPS=20
-TEMPERATURE=0.6
-MAX_TOKENS=8192
 EXPERIMENT_NAME="competitive_cournot_gpt_api_eval"
 
 python3 examples/data_preprocess/drmas_cournot.py \
@@ -57,6 +55,4 @@ python3 examples/api_eval/main_api_eval.py \
   --data-file "$DATA_FILE" \
   --episode-count "$EPISODE_COUNT" \
   --max-steps "$MAX_STEPS" \
-  --temperature "$TEMPERATURE" \
-  --max-tokens "$MAX_TOKENS" \
   --experiment-name "$EXPERIMENT_NAME"

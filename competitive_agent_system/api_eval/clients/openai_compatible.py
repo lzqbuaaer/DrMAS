@@ -39,18 +39,20 @@ class OpenAICompatibleChatClient(ChatModelClient):
         self,
         messages: list[dict[str, str]],
         *,
-        temperature: float,
+        temperature: float | None,
         top_p: float | None,
-        max_tokens: int,
+        max_tokens: int | None,
     ) -> str:
         url = f"{self.base_url}/chat/completions"
         payload = {
             "model": self.model,
             "messages": messages,
-            "temperature": float(temperature),
-            "max_tokens": int(max_tokens),
             "stream": False,
         }
+        if temperature is not None:
+            payload["temperature"] = float(temperature)
+        if max_tokens is not None:
+            payload["max_tokens"] = int(max_tokens)
         if top_p is not None:
             payload["top_p"] = float(top_p)
         if self.reasoning_effort:

@@ -79,22 +79,25 @@ class OpenAIResponsesClient(ChatModelClient):
         self,
         messages: list[dict[str, str]],
         *,
-        temperature: float,
+        temperature: float | None,
         top_p: float | None,
-        max_tokens: int,
+        max_tokens: int | None,
     ) -> dict:
         payload = {
             "model": self.model,
             "input": self._build_input(messages),
-            "temperature": float(temperature),
         }
+        if temperature is not None:
+            payload["temperature"] = float(temperature)
         if top_p is not None:
             payload["top_p"] = float(top_p)
         if self._is_apimart:
-            payload["max_tokens"] = int(max_tokens)
+            if max_tokens is not None:
+                payload["max_tokens"] = int(max_tokens)
             payload["stream"] = False
         else:
-            payload["max_output_tokens"] = int(max_tokens)
+            if max_tokens is not None:
+                payload["max_output_tokens"] = int(max_tokens)
         if self.reasoning_effort:
             payload["reasoning"] = {"effort": self.reasoning_effort}
         return payload
@@ -103,9 +106,9 @@ class OpenAIResponsesClient(ChatModelClient):
         self,
         messages: list[dict[str, str]],
         *,
-        temperature: float,
+        temperature: float | None,
         top_p: float | None,
-        max_tokens: int,
+        max_tokens: int | None,
     ) -> str:
         url = f"{self.base_url}/responses"
         payload = self._build_payload(
