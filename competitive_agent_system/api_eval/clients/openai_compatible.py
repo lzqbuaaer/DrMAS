@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 import os
 import time
-import urllib.error
-import urllib.request
+
+import requests
 
 from competitive_agent_system.api_eval.clients.base import ChatModelClient
 
@@ -94,29 +94,30 @@ class OpenAICompatibleChatClient(ChatModelClient):
             print("[api debug] request_payload_begin")
             print(json.dumps(payload, ensure_ascii=False, indent=2))
             print("[api debug] request_payload_end")
-        data = json.dumps(payload).encode("utf-8")
         last_error = None
 
         for attempt in range(self.max_http_retries):
-            request = urllib.request.Request(
-                url,
-                data=data,
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {self._get_api_key()}",
-                },
-                method="POST",
-            )
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self._get_api_key()}",
+            }
             try:
-                with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                    body = response.read().decode("utf-8")
-                parsed = json.loads(body)
+                response = requests.post(
+                    url,
+                    json=payload,
+                    headers=headers,
+                    timeout=self.timeout,
+                )
+                response.raise_for_status()
+                parsed = response.json()
                 return parsed["choices"][0]["message"]["content"]
-            except urllib.error.HTTPError as exc:
-                error_body = exc.read().decode("utf-8", errors="replace")
+            except requests.exceptions.HTTPError as exc:
+                response = exc.response
+                status_code = response.status_code if response is not None else -1
+                error_body = response.text if response is not None else str(exc)
                 last_error = RuntimeError(
                     self._format_http_error(
-                        status_code=exc.code,
+                        status_code=status_code,
                         url=url,
                         error_body=error_body,
                     )
@@ -124,7 +125,7 @@ class OpenAICompatibleChatClient(ChatModelClient):
                 if attempt + 1 >= self.max_http_retries:
                     break
                 time.sleep(min(2 ** attempt, 8))
-            except (urllib.error.URLError, TimeoutError, KeyError, json.JSONDecodeError) as exc:
+            except (requests.exceptions.RequestException, KeyError, json.JSONDecodeError) as exc:
                 last_error = exc
                 if attempt + 1 >= self.max_http_retries:
                     break
