@@ -35,6 +35,33 @@ class OpenAICompatibleChatClient(ChatModelClient):
             raise RuntimeError(f"Missing API key in environment variable {self.api_key_env}")
         return api_key
 
+    def _format_http_error(self, *, status_code: int, url: str, error_body: str) -> str:
+        try:
+            parsed = json.loads(error_body)
+        except json.JSONDecodeError:
+            return f"HTTP {status_code} for {url} model={self.model}: {error_body}"
+
+        error_payload = parsed.get("error", parsed)
+        if not isinstance(error_payload, dict):
+            return f"HTTP {status_code} for {url} model={self.model}: {error_body}"
+
+        message = error_payload.get("message")
+        code = error_payload.get("code")
+        param = error_payload.get("param")
+        error_type = error_payload.get("type")
+
+        details = [f"HTTP {status_code} for {url} model={self.model}"]
+        if message:
+            details.append(f"message={message}")
+        if param:
+            details.append(f"param={param}")
+        if code:
+            details.append(f"code={code}")
+        if error_type:
+            details.append(f"type={error_type}")
+        details.append(f"raw={error_body}")
+        return " | ".join(details)
+
     def generate(
         self,
         messages: list[dict[str, str]],
@@ -80,7 +107,11 @@ class OpenAICompatibleChatClient(ChatModelClient):
             except urllib.error.HTTPError as exc:
                 error_body = exc.read().decode("utf-8", errors="replace")
                 last_error = RuntimeError(
-                    f"HTTP {exc.code} for {url} model={self.model}: {error_body}"
+                    self._format_http_error(
+                        status_code=exc.code,
+                        url=url,
+                        error_body=error_body,
+                    )
                 )
                 if attempt + 1 >= self.max_http_retries:
                     break
