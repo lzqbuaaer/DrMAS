@@ -14,6 +14,7 @@ API_KEY_ENV="OPENAI_API_KEY"
 BASE_URL="https://api.apimart.ai/api/v1"
 REASONING_EFFORT=""
 THINKING_ENABLED=false
+RETRIES=3
 EPISODE_COUNT="$TEST_SEED_COUNT"
 MAX_STEPS=20
 TEMPERATURE=0.6
@@ -42,6 +43,7 @@ python3 examples/api_eval/main_api_eval.py \
   --api-key-env "$API_KEY_ENV" \
   --base-url "$BASE_URL" \
   --reasoning-effort "$REASONING_EFFORT" \
+  --max-http-retries "$RETRIES" \
   "${THINKING_ARG[@]}" \
   --data-file "$DATA_FILE" \
   --episode-count "$EPISODE_COUNT" \
