@@ -11,7 +11,7 @@ TEST_SAMPLED_SEED_COUNT=4
 
 MODEL="gpt-4.1-mini"
 API_KEY_ENV="OPENAI_API_KEY"
-BASE_URL="https://api.openai.com/v1"
+BASE_URL="https://api.apimart.ai/api/v1"
 REASONING_EFFORT=""
 THINKING_ENABLED=false
 EPISODE_COUNT="$TEST_SEED_COUNT"
