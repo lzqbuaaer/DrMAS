@@ -25,7 +25,10 @@ class ApiEvalRunner:
         self.executor = ThreadPoolExecutor(max_workers=max(1, len(self.agent_ids))) if self.eval_config.parallel_agents else None
 
     def _build_messages(self, observation: str) -> list[dict[str, str]]:
-        return [{"role": "user", "content": observation}]
+        return [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": observation},
+        ]
 
     def _generate_with_retry(self, *, agent_id: str, observation: str, parser):
         parse_kwargs = self.task_adapter.build_parse_kwargs(observation=observation, parser=parser)
