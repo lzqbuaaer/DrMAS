@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 
 from competitive_agent_system.api_eval.config import sanitize_path_component
 from competitive_agent_system.api_eval.dump import create_output_dir, dump_episode_json, dump_run_config
@@ -21,6 +22,7 @@ class ApiEvalRunner:
             agent_ids=self.agent_ids,
             sanitize_path_component=sanitize_path_component,
         )
+        self.executor = ThreadPoolExecutor(max_workers=max(1, len(self.agent_ids)))
 
     def _build_messages(self, observation: str) -> list[dict[str, str]]:
         return [{"role": "user", "content": observation}]
@@ -68,13 +70,17 @@ class ApiEvalRunner:
                 actions_by_agent = {}
                 raw_text_by_agent = {}
                 prompt_char_length_by_agent = {}
+                future_by_agent = {}
                 for agent_id in self.agent_ids:
                     prompt_char_length_by_agent[agent_id] = len(observations[agent_id])
-                    raw_text, parsed = self._generate_with_retry(
+                    future_by_agent[agent_id] = self.executor.submit(
+                        self._generate_with_retry,
                         agent_id=agent_id,
                         observation=observations[agent_id],
                         parser=parser,
                     )
+                for agent_id in self.agent_ids:
+                    raw_text, parsed = future_by_agent[agent_id].result()
                     actions_by_agent[agent_id] = parsed
                     raw_text_by_agent[agent_id] = raw_text
 
@@ -128,5 +134,8 @@ class ApiEvalRunner:
             payload = self._run_episode(env_kwargs=env_kwargs, episode_idx=episode_idx)
             dump_episode_json(output_dir=output_dir, traj_uid=payload["traj_uid"], payload=payload)
 
-        self.task_adapter.finalize_artifacts(output_dir)
-        return output_dir
+        try:
+            self.task_adapter.finalize_artifacts(output_dir)
+            return output_dir
+        finally:
+            self.executor.shutdown(wait=True)
