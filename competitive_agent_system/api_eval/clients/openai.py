@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from competitive_agent_system.api_eval.clients.openai_compatible import OpenAICompatibleChatClient
+from competitive_agent_system.api_eval.clients.openai_responses import OpenAIResponsesClient
 
 
 def build_openai_client(
@@ -13,12 +13,11 @@ def build_openai_client(
     timeout: float = 120.0,
     max_http_retries: int = 3,
 ):
-    return OpenAICompatibleChatClient(
+    return OpenAIResponsesClient(
         model=model,
         api_key_env=api_key_env,
         base_url=base_url,
         reasoning_effort=reasoning_effort,
-        thinking_enabled=thinking_enabled,
         timeout=timeout,
         max_http_retries=max_http_retries,
     )
