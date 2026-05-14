@@ -10,6 +10,8 @@ from competitive_agent_system.api_eval.clients.base import ChatModelClient
 
 
 class OpenAICompatibleChatClient(ChatModelClient):
+    _has_printed_debug_payload = False
+
     def __init__(
         self,
         *,
@@ -86,6 +88,12 @@ class OpenAICompatibleChatClient(ChatModelClient):
             payload["reasoning_effort"] = self.reasoning_effort
         if self.thinking_enabled:
             payload["extra_body"] = {"thinking": {"type": "enabled"}}
+        if not OpenAICompatibleChatClient._has_printed_debug_payload:
+            OpenAICompatibleChatClient._has_printed_debug_payload = True
+            print("[api debug] request_url=", url, sep="")
+            print("[api debug] request_payload_begin")
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+            print("[api debug] request_payload_end")
         data = json.dumps(payload).encode("utf-8")
         last_error = None
 
