@@ -10,7 +10,7 @@ class ChatModelClient(ABC):
         messages: list[dict[str, str]],
         *,
         temperature: float,
-        top_p: float,
+        top_p: float | None,
         max_tokens: int,
     ) -> str:
         raise NotImplementedError

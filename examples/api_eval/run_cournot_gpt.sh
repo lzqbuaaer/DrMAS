@@ -22,7 +22,6 @@ THINKING_ENABLED=false
 EPISODE_COUNT=20
 MAX_STEPS=20
 TEMPERATURE=0.6
-TOP_P=0.95
 MAX_TOKENS=8192
 EXPERIMENT_NAME="competitive_cournot_gpt_api_eval"
 
@@ -57,6 +56,5 @@ python3 examples/api_eval/main_api_eval.py \
   --episode-count "$EPISODE_COUNT" \
   --max-steps "$MAX_STEPS" \
   --temperature "$TEMPERATURE" \
-  --top-p "$TOP_P" \
   --max-tokens "$MAX_TOKENS" \
   --experiment-name "$EXPERIMENT_NAME"

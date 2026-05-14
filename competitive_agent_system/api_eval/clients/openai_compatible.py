@@ -40,7 +40,7 @@ class OpenAICompatibleChatClient(ChatModelClient):
         messages: list[dict[str, str]],
         *,
         temperature: float,
-        top_p: float,
+        top_p: float | None,
         max_tokens: int,
     ) -> str:
         url = f"{self.base_url}/chat/completions"
@@ -48,9 +48,10 @@ class OpenAICompatibleChatClient(ChatModelClient):
             "model": self.model,
             "messages": messages,
             "temperature": float(temperature),
-            "top_p": float(top_p),
             "max_tokens": int(max_tokens),
         }
+        if top_p is not None:
+            payload["top_p"] = float(top_p)
         if self.reasoning_effort:
             payload["reasoning_effort"] = self.reasoning_effort
         if self.thinking_enabled:
@@ -73,7 +74,15 @@ class OpenAICompatibleChatClient(ChatModelClient):
                     body = response.read().decode("utf-8")
                 parsed = json.loads(body)
                 return parsed["choices"][0]["message"]["content"]
-            except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, KeyError, json.JSONDecodeError) as exc:
+            except urllib.error.HTTPError as exc:
+                error_body = exc.read().decode("utf-8", errors="replace")
+                last_error = RuntimeError(
+                    f"HTTP {exc.code} for {url} model={self.model}: {error_body}"
+                )
+                if attempt + 1 >= self.max_http_retries:
+                    break
+                time.sleep(min(2 ** attempt, 8))
+            except (urllib.error.URLError, TimeoutError, KeyError, json.JSONDecodeError) as exc:
                 last_error = exc
                 if attempt + 1 >= self.max_http_retries:
                     break

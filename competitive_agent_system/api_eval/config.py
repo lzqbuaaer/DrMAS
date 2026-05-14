@@ -25,7 +25,7 @@ def _to_attrdict(value):
 @dataclass
 class SamplingConfig:
     temperature: float = 0.6
-    top_p: float = 0.95
+    top_p: float | None = 0.95
     max_tokens: int = 1024
 
 

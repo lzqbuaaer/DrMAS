@@ -80,15 +80,16 @@ class OpenAIResponsesClient(ChatModelClient):
         messages: list[dict[str, str]],
         *,
         temperature: float,
-        top_p: float,
+        top_p: float | None,
         max_tokens: int,
     ) -> dict:
         payload = {
             "model": self.model,
             "input": self._build_input(messages),
             "temperature": float(temperature),
-            "top_p": float(top_p),
         }
+        if top_p is not None:
+            payload["top_p"] = float(top_p)
         if self._is_apimart:
             payload["max_tokens"] = int(max_tokens)
             payload["stream"] = False
@@ -103,7 +104,7 @@ class OpenAIResponsesClient(ChatModelClient):
         messages: list[dict[str, str]],
         *,
         temperature: float,
-        top_p: float,
+        top_p: float | None,
         max_tokens: int,
     ) -> str:
         url = f"{self.base_url}/responses"
