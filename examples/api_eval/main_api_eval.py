@@ -18,6 +18,8 @@ def build_client(provider_config: ProviderConfig):
             model=provider_config.model,
             api_key_env=provider_config.api_key_env,
             base_url=provider_config.base_url or "https://api.deepseek.com",
+            reasoning_effort=provider_config.reasoning_effort,
+            thinking_enabled=provider_config.thinking_enabled,
             timeout=provider_config.timeout,
             max_http_retries=provider_config.max_http_retries,
         )
@@ -26,6 +28,8 @@ def build_client(provider_config: ProviderConfig):
             model=provider_config.model,
             api_key_env=provider_config.api_key_env,
             base_url=provider_config.base_url or "https://api.openai.com/v1",
+            reasoning_effort=provider_config.reasoning_effort,
+            thinking_enabled=provider_config.thinking_enabled,
             timeout=provider_config.timeout,
             max_http_retries=provider_config.max_http_retries,
         )
@@ -47,6 +51,8 @@ def parse_args():
     parser.add_argument("--experiment-name", required=True)
     parser.add_argument("--api-key-env", default=None)
     parser.add_argument("--base-url", default=None)
+    parser.add_argument("--reasoning-effort", default=None)
+    parser.add_argument("--thinking-enabled", action="store_true")
     parser.add_argument("--timeout", type=float, default=120.0)
     parser.add_argument("--max-http-retries", type=int, default=3)
     parser.add_argument("--max-parse-retries", type=int, default=None)
@@ -78,6 +84,8 @@ def main():
         model=args.model,
         api_key_env=args.api_key_env or ("DEEPSEEK_API_KEY" if args.provider == "deepseek" else "OPENAI_API_KEY"),
         base_url=args.base_url or ("https://api.deepseek.com" if args.provider == "deepseek" else "https://api.openai.com/v1"),
+        reasoning_effort=args.reasoning_effort,
+        thinking_enabled=args.thinking_enabled,
         timeout=args.timeout,
         max_http_retries=args.max_http_retries,
     )

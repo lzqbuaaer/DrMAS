@@ -12,6 +12,8 @@ TEST_SAMPLED_SEED_COUNT=4
 MODEL="deepseek-chat"
 API_KEY_ENV="DEEPSEEK_API_KEY"
 BASE_URL="https://api.deepseek.com"
+REASONING_EFFORT="high"
+THINKING_ENABLED=true
 EPISODE_COUNT="$TEST_SEED_COUNT"
 MAX_STEPS=20
 TEMPERATURE=0.6
@@ -29,12 +31,19 @@ python3 examples/data_preprocess/drmas_duopoly.py \
   --test_seed_count "$TEST_SEED_COUNT" \
   --test_sampled_seed_count "$TEST_SAMPLED_SEED_COUNT"
 
+THINKING_ARG=()
+if [ "$THINKING_ENABLED" = true ]; then
+  THINKING_ARG+=(--thinking-enabled)
+fi
+
 python3 examples/api_eval/main_api_eval.py \
   --task duopoly \
   --provider deepseek \
   --model "$MODEL" \
   --api-key-env "$API_KEY_ENV" \
   --base-url "$BASE_URL" \
+  --reasoning-effort "$REASONING_EFFORT" \
+  "${THINKING_ARG[@]}" \
   --data-file "$DATA_FILE" \
   --episode-count "$EPISODE_COUNT" \
   --max-steps "$MAX_STEPS" \

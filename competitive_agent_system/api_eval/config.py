@@ -35,6 +35,8 @@ class ProviderConfig:
     model: str
     api_key_env: str
     base_url: str | None = None
+    reasoning_effort: str | None = None
+    thinking_enabled: bool = False
     timeout: float = 120.0
     max_http_retries: int = 3
 

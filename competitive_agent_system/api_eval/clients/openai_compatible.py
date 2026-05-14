@@ -16,12 +16,16 @@ class OpenAICompatibleChatClient(ChatModelClient):
         model: str,
         api_key_env: str,
         base_url: str,
+        reasoning_effort: str | None = None,
+        thinking_enabled: bool = False,
         timeout: float = 120.0,
         max_http_retries: int = 3,
     ):
         self.model = model
         self.api_key_env = api_key_env
         self.base_url = base_url.rstrip("/")
+        self.reasoning_effort = reasoning_effort
+        self.thinking_enabled = bool(thinking_enabled)
         self.timeout = float(timeout)
         self.max_http_retries = int(max_http_retries)
 
@@ -47,6 +51,10 @@ class OpenAICompatibleChatClient(ChatModelClient):
             "top_p": float(top_p),
             "max_tokens": int(max_tokens),
         }
+        if self.reasoning_effort:
+            payload["reasoning_effort"] = self.reasoning_effort
+        if self.thinking_enabled:
+            payload["extra_body"] = {"thinking": {"type": "enabled"}}
         data = json.dumps(payload).encode("utf-8")
         last_error = None
 
