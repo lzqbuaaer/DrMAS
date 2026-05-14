@@ -49,6 +49,7 @@ class OpenAICompatibleChatClient(ChatModelClient):
             "messages": messages,
             "temperature": float(temperature),
             "max_tokens": int(max_tokens),
+            "stream": False,
         }
         if top_p is not None:
             payload["top_p"] = float(top_p)
