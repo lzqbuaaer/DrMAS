@@ -73,6 +73,10 @@ class ApiEvalRunner:
                 future_by_agent = {}
                 for agent_id in self.agent_ids:
                     prompt_char_length_by_agent[agent_id] = len(observations[agent_id])
+                    if episode_idx == 0 and step_idx == 0:
+                        print(f"[api eval debug] episode=1 step=1 agent={agent_id} prompt_begin")
+                        print(observations[agent_id])
+                        print(f"[api eval debug] episode=1 step=1 agent={agent_id} prompt_end")
                     future_by_agent[agent_id] = self.executor.submit(
                         self._generate_with_retry,
                         agent_id=agent_id,
