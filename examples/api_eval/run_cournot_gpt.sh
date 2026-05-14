@@ -20,6 +20,7 @@ BASE_URL="https://api.apimart.ai/api/v1"
 REASONING_EFFORT=""
 THINKING_ENABLED=false
 RETRIES=3
+PARALLEL_AGENTS=false
 EPISODE_COUNT=20
 MAX_STEPS=20
 EXPERIMENT_NAME="competitive_cournot_gpt_api_eval"
@@ -42,6 +43,12 @@ THINKING_ARG=()
 if [ "$THINKING_ENABLED" = true ]; then
   THINKING_ARG+=(--thinking-enabled)
 fi
+PARALLEL_ARG=()
+if [ "$PARALLEL_AGENTS" = true ]; then
+  PARALLEL_ARG+=(--parallel-agents)
+else
+  PARALLEL_ARG+=(--serial-agents)
+fi
 
 python3 examples/api_eval/main_api_eval.py \
   --task cournot \
@@ -52,6 +59,7 @@ python3 examples/api_eval/main_api_eval.py \
   --reasoning-effort "$REASONING_EFFORT" \
   --max-http-retries "$RETRIES" \
   "${THINKING_ARG[@]}" \
+  "${PARALLEL_ARG[@]}" \
   --data-file "$DATA_FILE" \
   --episode-count "$EPISODE_COUNT" \
   --max-steps "$MAX_STEPS" \

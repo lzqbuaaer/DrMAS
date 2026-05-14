@@ -49,6 +49,7 @@ class ApiEvalConfig:
     episode_count: int | None
     output_root: str = "eval_data"
     concurrency: int = 1
+    parallel_agents: bool = True
     max_retries: int | None = None
     seed: int = 0
     sampling: SamplingConfig | None = None

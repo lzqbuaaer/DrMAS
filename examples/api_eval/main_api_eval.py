@@ -56,6 +56,9 @@ def parse_args():
     parser.add_argument("--timeout", type=float, default=120.0)
     parser.add_argument("--max-http-retries", type=int, default=3)
     parser.add_argument("--max-parse-retries", type=int, default=None)
+    parser.add_argument("--parallel-agents", dest="parallel_agents", action="store_true")
+    parser.add_argument("--serial-agents", dest="parallel_agents", action="store_false")
+    parser.set_defaults(parallel_agents=True)
     parser.add_argument("--duopoly-beta", type=float, default=100.0)
     parser.add_argument("--duopoly-prompt-prefix-type", default="P1")
     parser.add_argument("--cournot-market-data-length", type=int, default=15)
@@ -95,6 +98,7 @@ def main():
         data_file=args.data_file,
         episode_count=args.episode_count,
         output_root=args.output_root,
+        parallel_agents=args.parallel_agents,
         max_retries=args.max_parse_retries,
         sampling=SamplingConfig(
             temperature=args.temperature,

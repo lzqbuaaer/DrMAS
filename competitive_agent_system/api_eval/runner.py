@@ -22,7 +22,7 @@ class ApiEvalRunner:
             agent_ids=self.agent_ids,
             sanitize_path_component=sanitize_path_component,
         )
-        self.executor = ThreadPoolExecutor(max_workers=max(1, len(self.agent_ids)))
+        self.executor = ThreadPoolExecutor(max_workers=max(1, len(self.agent_ids))) if self.eval_config.parallel_agents else None
 
     def _build_messages(self, observation: str) -> list[dict[str, str]]:
         return [{"role": "user", "content": observation}]
@@ -70,23 +70,38 @@ class ApiEvalRunner:
                 actions_by_agent = {}
                 raw_text_by_agent = {}
                 prompt_char_length_by_agent = {}
-                future_by_agent = {}
-                for agent_id in self.agent_ids:
-                    prompt_char_length_by_agent[agent_id] = len(observations[agent_id])
-                    if episode_idx == 0 and step_idx == 0:
-                        print(f"[api eval debug] episode=1 step=1 agent={agent_id} prompt_begin")
-                        print(observations[agent_id])
-                        print(f"[api eval debug] episode=1 step=1 agent={agent_id} prompt_end")
-                    future_by_agent[agent_id] = self.executor.submit(
-                        self._generate_with_retry,
-                        agent_id=agent_id,
-                        observation=observations[agent_id],
-                        parser=parser,
-                    )
-                for agent_id in self.agent_ids:
-                    raw_text, parsed = future_by_agent[agent_id].result()
-                    actions_by_agent[agent_id] = parsed
-                    raw_text_by_agent[agent_id] = raw_text
+                if self.eval_config.parallel_agents:
+                    future_by_agent = {}
+                    for agent_id in self.agent_ids:
+                        prompt_char_length_by_agent[agent_id] = len(observations[agent_id])
+                        if episode_idx == 0 and step_idx == 0:
+                            print(f"[api eval debug] episode=1 step=1 agent={agent_id} prompt_begin")
+                            print(observations[agent_id])
+                            print(f"[api eval debug] episode=1 step=1 agent={agent_id} prompt_end")
+                        future_by_agent[agent_id] = self.executor.submit(
+                            self._generate_with_retry,
+                            agent_id=agent_id,
+                            observation=observations[agent_id],
+                            parser=parser,
+                        )
+                    for agent_id in self.agent_ids:
+                        raw_text, parsed = future_by_agent[agent_id].result()
+                        actions_by_agent[agent_id] = parsed
+                        raw_text_by_agent[agent_id] = raw_text
+                else:
+                    for agent_id in self.agent_ids:
+                        prompt_char_length_by_agent[agent_id] = len(observations[agent_id])
+                        if episode_idx == 0 and step_idx == 0:
+                            print(f"[api eval debug] episode=1 step=1 agent={agent_id} prompt_begin")
+                            print(observations[agent_id])
+                            print(f"[api eval debug] episode=1 step=1 agent={agent_id} prompt_end")
+                        raw_text, parsed = self._generate_with_retry(
+                            agent_id=agent_id,
+                            observation=observations[agent_id],
+                            parser=parser,
+                        )
+                        actions_by_agent[agent_id] = parsed
+                        raw_text_by_agent[agent_id] = raw_text
 
                 observations, reward, done, info = env.step(actions_by_agent)
                 step_trace = self.task_adapter.task_handler.build_step_trace(
@@ -142,4 +157,5 @@ class ApiEvalRunner:
             self.task_adapter.finalize_artifacts(output_dir)
             return output_dir
         finally:
-            self.executor.shutdown(wait=True)
+            if self.executor is not None:
+                self.executor.shutdown(wait=True)
