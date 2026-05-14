@@ -39,7 +39,7 @@ class BaseCompetitiveRolloutTaskHandler:
     def iter_eval_payloads(self, dump_dir: str):
         summary_filename = self.get_eval_summary_filename()
         for json_path in sorted(Path(dump_dir).glob("*.json")):
-            if json_path.name == summary_filename:
+            if json_path.name in {summary_filename, "run_config.json"}:
                 continue
             with open(json_path, "r", encoding="utf-8") as f:
                 yield json.load(f)

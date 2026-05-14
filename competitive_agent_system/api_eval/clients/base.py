@@ -1,0 +1,16 @@
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+
+
+class ChatModelClient(ABC):
+    @abstractmethod
+    def generate(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        temperature: float,
+        top_p: float,
+        max_tokens: int,
+    ) -> str:
+        raise NotImplementedError
