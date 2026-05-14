@@ -47,7 +47,7 @@ class ApiEvalConfig:
     experiment_name: str
     data_file: str
     episode_count: int | None
-    output_root: str = "api_eval_data"
+    output_root: str = "eval_data"
     concurrency: int = 1
     max_retries: int | None = None
     seed: int = 0

@@ -47,7 +47,7 @@ def parse_args():
     parser.add_argument("--temperature", type=float, default=0.6)
     parser.add_argument("--top-p", type=float, default=0.95)
     parser.add_argument("--max-tokens", type=int, default=1024)
-    parser.add_argument("--output-root", default="api_eval_data")
+    parser.add_argument("--output-root", default="eval_data")
     parser.add_argument("--experiment-name", required=True)
     parser.add_argument("--api-key-env", default=None)
     parser.add_argument("--base-url", default=None)
