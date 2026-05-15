@@ -22,6 +22,7 @@ def build_openai_client(
             model=model,
             api_key_env=api_key_env,
             base_url=base_url,
+            reasoning_effort=reasoning_effort,
             timeout=timeout,
             max_http_retries=max_http_retries,
         )
