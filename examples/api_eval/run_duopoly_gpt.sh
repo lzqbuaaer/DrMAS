@@ -13,7 +13,6 @@ MODEL="gpt-4.1-mini"
 API_KEY_ENV="OPENAI_API_KEY"
 BASE_URL="https://api.apimart.ai/api/v1"
 REASONING_EFFORT=""
-THINKING_ENABLED=false
 RETRIES=3
 PARALLEL_AGENTS=false
 EPISODE_COUNT="$TEST_SEED_COUNT"
@@ -30,10 +29,6 @@ python3 examples/data_preprocess/drmas_duopoly.py \
   --test_seed_count "$TEST_SEED_COUNT" \
   --test_sampled_seed_count "$TEST_SAMPLED_SEED_COUNT"
 
-THINKING_ARG=()
-if [ "$THINKING_ENABLED" = true ]; then
-  THINKING_ARG+=(--thinking-enabled)
-fi
 PARALLEL_ARG=()
 if [ "$PARALLEL_AGENTS" = true ]; then
   PARALLEL_ARG+=(--parallel-agents)
@@ -49,7 +44,6 @@ python3 examples/api_eval/main_api_eval.py \
   --base-url "$BASE_URL" \
   --reasoning-effort "$REASONING_EFFORT" \
   --max-http-retries "$RETRIES" \
-  "${THINKING_ARG[@]}" \
   "${PARALLEL_ARG[@]}" \
   --data-file "$DATA_FILE" \
   --episode-count "$EPISODE_COUNT" \

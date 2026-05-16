@@ -107,10 +107,12 @@ class ApiEvalRunner:
                 step_trace["prompt_char_length_by_agent"] = prompt_char_length_by_agent
                 step_traces.append(step_trace)
                 prices_by_agent = info.get("prices_by_agent")
+                quantities_by_agent = info.get("quantities_by_agent")
                 print(
                     f"[api eval] step={step_idx + 1} "
                     f"data_source={info.get('data_source')} "
                     f"{'' if prices_by_agent is None else f'prices={prices_by_agent} '}"
+                    f"{'' if quantities_by_agent is None else f'quantities={quantities_by_agent} '}"
                     f"prompt_chars={prompt_char_length_by_agent}"
                 )
                 terminal_info = dict(info)
